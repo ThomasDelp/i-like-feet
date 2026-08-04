@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Alexandre &amp; the Foot Princess</title>
+<meta name="description" content="A vertical platformer: climb to the Foot Princess while flying toenails try to stop you.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👑</text></svg>">
+<link rel="stylesheet" href="game.css">
+</head>
+<body>
+  <div class="stage">
+    <canvas id="game" width="480" height="720" tabindex="0"
+            aria-label="Vertical platformer game. Use the left and right arrow keys to climb."></canvas>
+  </div>
+
+  <aside class="legend">
+    <h1>Alexandre &amp; the Foot Princess</h1>
+    <p>
+      Alexandre — bald, bespectacled, hopelessly in love — must climb to the top
+      and save the Foot Princess. Flying <strong>ongles</strong> cost him
+      1&nbsp;HP out of&nbsp;3.
+    </p>
+    <ul>
+      <li><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> — move (he bounces on his own)</li>
+      <li><kbd>M</kbd> — mute · <kbd>R</kbd> — restart · <kbd>P</kbd> — pause</li>
+      <li>On touch: hold the left or right half of the screen</li>
+    </ul>
+    <p class="back"><a href="./">← back to the feet</a></p>
+  </aside>
+
+  <script src="game.js"></script>
+</body>
+</html>

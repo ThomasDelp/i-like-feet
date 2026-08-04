@@ -1,0 +1,98 @@
+:root {
+  --ink: #fdf6ef;
+  --muted: #c7b6a8;
+  --accent: #ffb27a;
+  --accent-2: #ff6f91;
+  --panel: rgba(20, 12, 24, 0.55);
+  --panel-line: rgba(255, 255, 255, 0.14);
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; margin: 0; }
+
+body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  padding: 1.5rem;
+  font-family: ui-rounded, "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 800px at 20% 10%, #4b2a5e 0%, transparent 60%),
+    radial-gradient(1000px 700px at 85% 80%, #7a3350 0%, transparent 55%),
+    linear-gradient(160deg, #1b1024 0%, #2a1330 50%, #120b18 100%);
+  overflow: hidden;
+}
+
+.stage {
+  display: flex;
+  height: min(100% - 0rem, 90vh);
+}
+
+canvas {
+  height: 100%;
+  max-width: 100%;
+  aspect-ratio: 2 / 3;
+  border: 1px solid var(--panel-line);
+  border-radius: 1rem;
+  background: #140d1c;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  touch-action: none;
+  cursor: pointer;
+}
+
+canvas:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 4px; }
+
+.legend {
+  max-width: 22rem;
+  padding: 1.5rem;
+  border: 1px solid var(--panel-line);
+  border-radius: 1.25rem;
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.legend h1 {
+  margin: 0 0 0.75rem;
+  font-size: 1.5rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  background: linear-gradient(100deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.legend p { margin: 0 0 1rem; }
+.legend strong { color: var(--ink); }
+
+.legend ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  line-height: 1.9;
+}
+
+kbd {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--panel-line);
+  border-radius: 0.35rem;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.75rem;
+  font-family: ui-monospace, monospace;
+  color: var(--ink);
+}
+
+.back { margin: 1.25rem 0 0; }
+.back a { color: var(--accent); }
+
+@media (max-height: 640px), (max-width: 860px) {
+  body { gap: 1rem; padding: 0.75rem; overflow: auto; }
+  .stage { height: 78vh; }
+  .legend { max-width: 32rem; }
+  .legend ul { line-height: 1.7; }
+}

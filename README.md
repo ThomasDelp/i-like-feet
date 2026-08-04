@@ -1,33 +1,46 @@
 # i-like-feet
 
-A single-page site whose background is a canvas full of flying feet.
+Two pages, no build step, no dependencies.
 
-**Live:** https://thomasdelp.github.io/i-like-feet/
+- **Landing page** — a canvas full of flying feet: https://thomasdelp.github.io/i-like-feet/
+- **The game** — *Alexandre & the Foot Princess*: https://thomasdelp.github.io/i-like-feet/game.html
 
-## What's in it
+## Alexandre & the Foot Princess
 
-- `index.html` — the page (title, tagline, controls)
-- `styles.css` — gradient backdrop, glass panel, layout
-- `feet.js` — the canvas animation: emoji feet with per-foot depth, drift, spin and wobble
+A vertical platformer. Alexandre — bald, bespectacled — climbs 500 m to save the
+Foot Princess. Flying **ongles** cost him 1 HP out of 3.
 
-## Controls
-
-| Control | What it does |
+| Control | |
 | --- | --- |
-| Feet in flight | 4–120 feet on screen |
-| Flight speed | 0.1×–4× drift speed |
-| Stomp (or <kbd>space</kbd>) | Blasts every foot away from the centre, then lets them settle |
-| <kbd>P</kbd> | Pause / resume |
+| <kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd> | Steer. He bounces on his own. |
+| <kbd>P</kbd> · <kbd>R</kbd> · <kbd>M</kbd> | Pause · restart · mute |
+| Touch | Hold the left or right half of the canvas |
 
-Honours `prefers-reduced-motion` by starting at a near-standstill drift.
+**Platforms:** purple = solid · teal = sliding · orange = cracks after one bounce ·
+gold = the throne at the summit. Fall below the screen and it's over — the camera
+never comes back down.
+
+**Under the hood:** one tall world column where `y` grows downward, so climbing is
+negative. Platforms are generated procedurally ahead of the camera and culled
+behind it; gaps widen and ledges narrow with altitude. Ongle frequency and speed
+scale with height too. Score is the highest point reached, so falling never
+rewinds it. Everything — Alexandre, the princess, the ongles, the HUD — is drawn
+with canvas primitives; the only audio is a few WebAudio oscillator blips.
+
+## Files
+
+| | |
+| --- | --- |
+| `index.html` / `styles.css` / `feet.js` | Landing page and its flying-feet background |
+| `game.html` / `game.css` / `game.js` | The game |
 
 ## Running locally
-
-No build step, no dependencies — open `index.html`, or serve the folder:
 
 ```sh
 python3 -m http.server 8000
 ```
+
+Then open http://localhost:8000/ — or just open `index.html` directly.
 
 ## Deploying
 
