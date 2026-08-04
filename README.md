@@ -8,7 +8,7 @@ Two pages, no build step, no dependencies.
 ## Alexandre & Sabrina, the Foot Princess
 
 A vertical platformer, **in French**. Alexandre — bald, bespectacled — climbs
-500 m to save **Sabrina**, the Foot Princess. Flying **ongles** cost him one of
+500 m to save **Sabrina**, the Foot Princess. Flying **rasoirs** (razors) cost him one of
 his three Red Bulls (the HP bar is a row of cans).
 
 | Control | |
@@ -36,7 +36,7 @@ platforms (never on moving ones — they'd drift out of sync).
 
 | | | |
 | --- | --- | --- |
-| ✂️ | **Coupe-ongles** | 8 s shield: ongles shatter on contact instead of hurting |
+| ✂️ | **Coupe-ongles** | 8 s shield: razors shatter on contact instead of hurting |
 | 🥫 | **Red Bull** | +1 HP — or a spare life if he's already full |
 | 🧑‍🦲 | **1UP** | one more Alexandre, up to five |
 | 🧴 | **Crème pour le crâne** | the rarest — see below |
@@ -53,7 +53,7 @@ included, then serves it.
 | --- | --- | --- |
 | 🍛 | **Indien** | 3.4 s of curry propulsion — he farts, and it lifts him at a steady climb, olive plume included |
 | 🍜 | **Nouilles** | 3 grapples: click or tap a ledge and a noodle reels him to it, Spider-Man style. Anchors track moving ledges; a tap away from any ledge still steers |
-| 🍟 | **Frites** | 4.5 s of eating badly: fries spray out ahead of him, and each one destroys an ongle on contact, destroying itself too |
+| 🍟 | **Frites** | 4.5 s of eating badly: fries spray out ahead of him, and each one destroys a razor on contact, destroying itself too |
 
 ### Crème pour le crâne
 
@@ -85,7 +85,7 @@ negative. Platforms are generated procedurally ahead of the camera and culled
 behind it; gaps widen and ledges narrow with altitude. Ongle frequency and speed
 scale with current altitude, while the score tracks the highest point reached, so
 falling never rewinds it. Pickups only attach to static platforms — on moving ones
-they'd drift out of sync. Everything — Alexandre, the princess, the ongles, the
+they'd drift out of sync. Everything — Alexandre, the princess, the razors, the
 pickups, the HUD — is drawn with canvas primitives; the only audio is a few
 WebAudio oscillator blips.
 

@@ -14,10 +14,10 @@ const MOVE_ACCEL = 0.62;
 const MOVE_MAX = 5.4;
 const FRICTION = 0.9;
 const MAX_HP = 3;
-const INVULN = 112;           // frames of mercy after an ongle connects
+const INVULN = 112;           // frames of mercy after a razor connects
 const START_LIVES = 3;
 const MAX_LIVES = 5;
-const CLIPPER_TIME = 8 * 60;  // how long a nail clipper keeps ongles off him
+const CLIPPER_TIME = 8 * 60;  // how long a razor clipper keeps razors off him
 const SPRING_VY = -20.5;      // trampoline launch, ~2.5 platforms in one go
 const MID_REST = -GOAL / 2;   // the one and only checkpoint, halfway up
 const DOWN_TIME = 78;         // frames of the "he's down" beat before respawning
@@ -156,8 +156,8 @@ function steer() {
 /* ----------------------------------------------------------------- state */
 
 let state = 'title';          // title | play | pause | cat | downed | dead | win
-let player, platforms, nails, bonuses, toasts, particles, backFeet;
-let camY, groundY, goalY, best, shake, frames, nailTimer, endTimer;
+let player, platforms, razors, bonuses, toasts, particles, backFeet;
+let camY, groundY, goalY, best, shake, frames, razorTimer, endTimer;
 let lives, checkpoint, restPlaced, downTimer, deathReason;
 let catTimer, catFrom, catTarget;
 let fries, wheelTimer, wheelPick, wheelStep, cracks, crackT;
@@ -187,7 +187,7 @@ function reset() {
   stopCatSound();
 
   platforms = [{ ...checkpoint, dead: false }];
-  nails = [];
+  razors = [];
   bonuses = [];
   toasts = [];
   particles = [];
@@ -199,7 +199,7 @@ function reset() {
   crackT = 0;
   shake = 0;
   frames = 0;
-  nailTimer = 140;
+  razorTimer = 140;
   endTimer = 0;
 
   backFeet = Array.from({ length: 16 }, () => ({
@@ -376,7 +376,7 @@ function serveMeal(meal) {
 }
 
 /* Les frites : il mange salement et en perd la moitié vers l'avant. Une frite
-   qui touche un ongle le détruit et se détruit avec. */
+   qui touche un rasoir le détruit et se détruit avec. */
 
 function ejectFry() {
   fries.push({
@@ -399,12 +399,12 @@ function stepFries() {
     fry.rot += fry.spin;
     fry.age++;
     if (fry.gone) continue;
-    for (const nail of nails) {
-      if (nail.gone) continue;
-      if (Math.hypot(nail.x - fry.x, nail.y - fry.y) < nail.r + 7) {
-        nail.gone = true;
+    for (const razor of razors) {
+      if (razor.gone) continue;
+      if (Math.hypot(razor.x - fry.x, razor.y - fry.y) < razor.r + 7) {
+        razor.gone = true;
         fry.gone = true;
-        burst(fry.x, fry.y, 8, ['#ffd93b', '#fff3c4', '#e0a091'], 2.6);
+        burst(fry.x, fry.y, 8, ['#ffd93b', '#fff3c4', '#dbe7f5'], 2.6);
         sfx.clip();
         break;
       }
@@ -602,7 +602,7 @@ function startCat() {
   player.vy = 0;
   player.invuln = INVULN;
   player.grapple = null;
-  nails = [];
+  razors = [];
   playCatSound();
 }
 
@@ -636,7 +636,7 @@ function stepCat() {
     state = 'play';
     player.vy = 1;
     player.invuln = 80;
-    nailTimer = Math.max(nailTimer, 100);
+    razorTimer = Math.max(razorTimer, 100);
     burst(player.x, player.y, 22, ['#76b900', '#d7ff8a', '#fdf6ef'], 4.2);
   }
 }
@@ -655,14 +655,14 @@ function stepToasts() {
   toasts = toasts.filter((t) => t.age < t.life);
 }
 
-/* ------------------------------------------------------------------ nails */
+/* ------------------------------------------------------------------ razors */
 
-function spawnNail() {
+function spawnRazor() {
   const climbed = altitude() * 10;
   const t = clamp(climbed / GOAL, 0, 1);
   const fromLeft = Math.random() < 0.5;
   const speed = rand(2.1, 3.4) + t * 1.9;
-  nails.push({
+  razors.push({
     x: fromLeft ? -24 : VIEW.w + 24,
     y: camY + rand(VIEW.h * 0.05, VIEW.h * 0.92),
     vx: fromLeft ? speed : -speed,
@@ -673,54 +673,54 @@ function spawnNail() {
   });
 }
 
-function stepNails() {
+function stepRazors() {
   const climbed = altitude() * 10;
   const t = clamp(climbed / GOAL, 0, 1);
 
-  if (climbed > 260 && --nailTimer <= 0) {
-    spawnNail();
-    if (t > 0.55 && Math.random() < 0.32) spawnNail();   // late-game volleys
-    nailTimer = Math.round(rand(72, 128) - t * 38);
+  if (climbed > 260 && --razorTimer <= 0) {
+    spawnRazor();
+    if (t > 0.55 && Math.random() < 0.32) spawnRazor();   // late-game volleys
+    razorTimer = Math.round(rand(72, 128) - t * 38);
   }
 
-  for (const nail of nails) {
-    nail.x += nail.vx;
-    nail.y += nail.vy;
-    nail.rot += nail.spin;
-    if (nail.gone) continue;
-    if (player.clipper > 0 && overlapsPlayer(nail.x, nail.y, nail.r + 14)) clip(nail);
-    else if (player.invuln === 0 && hitsPlayer(nail)) hurt(nail);
+  for (const razor of razors) {
+    razor.x += razor.vx;
+    razor.y += razor.vy;
+    razor.rot += razor.spin;
+    if (razor.gone) continue;
+    if (player.clipper > 0 && overlapsPlayer(razor.x, razor.y, razor.r + 14)) clip(razor);
+    else if (player.invuln === 0 && hitsPlayer(razor)) hurt(razor);
   }
 
-  nails = nails.filter((n) => n.x > -60 && n.x < VIEW.w + 60 && n.y < camY + VIEW.h + 120 && !n.gone);
+  razors = razors.filter((n) => n.x > -60 && n.x < VIEW.w + 60 && n.y < camY + VIEW.h + 120 && !n.gone);
 }
 
-/* Circle against Alexandre's body box — used for both ongles and pickups. */
+/* Circle against Alexandre's body box — used for both razors and pickups. */
 function overlapsPlayer(x, y, r) {
   const nx = clamp(x, player.x - player.w / 2, player.x + player.w / 2);
   const ny = clamp(y, player.y - player.h / 2, player.y + player.h / 2);
   return Math.hypot(x - nx, y - ny) < r;
 }
 
-function hitsPlayer(nail) {
-  return overlapsPlayer(nail.x, nail.y, nail.r * 0.8);
+function hitsPlayer(razor) {
+  return overlapsPlayer(razor.x, razor.y, razor.r * 0.8);
 }
 
-/* Clipped, not hurt: the nail clipper turns ongles into confetti. */
-function clip(nail) {
-  nail.gone = true;
-  burst(nail.x, nail.y, 9, ['#8bd7ff', '#fdf6ef', '#c9e9ff'], 2.6);
+/* Clipped, not hurt: the razor clipper turns razors into confetti. */
+function clip(razor) {
+  razor.gone = true;
+  burst(razor.x, razor.y, 9, ['#8bd7ff', '#fdf6ef', '#dbe7f5'], 2.6);
   sfx.clip();
 }
 
-function hurt(nail) {
+function hurt(razor) {
   if (state !== 'play') return;
-  nail.gone = true;
+  razor.gone = true;
   player.hp -= 1;
   player.invuln = INVULN;
   shake = 14;
-  burst(nail.x, nail.y, 14, ['#ffd9c9', '#ff8fa3', '#ffe6b0']);
-  if (player.hp <= 0) downed('ongles');
+  burst(razor.x, razor.y, 14, ['#dbe7f5', '#8fc4f5', '#ffffff']);
+  if (player.hp <= 0) downed('rasoirs');
   else sfx.hurt();
 }
 
@@ -756,7 +756,7 @@ function downed(reason) {
    been culled, so the climb above it is freshly generated. */
 function respawn() {
   platforms = [{ ...checkpoint, dead: false }];
-  nails = [];
+  razors = [];
   bonuses = [];
 
   player.x = checkpoint.x + checkpoint.w / 2;
@@ -765,7 +765,7 @@ function respawn() {
   player.vy = 0;
   player.hp = MAX_HP;
   player.invuln = INVULN;
-  nailTimer = 130;
+  razorTimer = 130;
   restPlaced = checkpoint.type === 'rest';   // the mid ledge is behind him now
 
   camY = checkpoint.y - VIEW.h * 0.55;
@@ -1087,35 +1087,68 @@ function drawPlatform(plat) {
   }
 }
 
-function drawNail(nail) {
-  const y = nail.y - camY;
-  if (y < -40 || y > VIEW.h + 40) return;
-  const w = nail.r * 1.55;
-  const h = nail.r * 2.1;
+/* Un rasoir jetable qui tourne : manche bleu strié, col chromé, tête à lames. */
+function drawRazor(razor) {
+  const y = razor.y - camY;
+  if (y < -46 || y > VIEW.h + 46) return;
+  const len = razor.r * 2.7;
+  const w = razor.r * 0.95;
 
   ctx.save();
-  ctx.translate(nail.x, y);
-  ctx.rotate(nail.rot);
+  ctx.translate(razor.x, y);
+  ctx.rotate(razor.rot);
 
-  const grad = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
-  grad.addColorStop(0, '#fff3ea');
-  grad.addColorStop(1, '#e0a091');
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.moveTo(-w / 2, h * 0.28);
-  ctx.quadraticCurveTo(-w / 2, -h / 2, 0, -h / 2);
-  ctx.quadraticCurveTo(w / 2, -h / 2, w / 2, h * 0.28);
-  ctx.quadraticCurveTo(0, h * 0.62, -w / 2, h * 0.28);
-  ctx.closePath();
+  // manche
+  const grip = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+  grip.addColorStop(0, '#245a96');
+  grip.addColorStop(0.42, '#8fc4f5');
+  grip.addColorStop(1, '#1f4d80');
+  ctx.fillStyle = grip;
+  roundRect(-w / 2, -len / 2, w, len * 0.6, w * 0.42);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(120,60,55,.45)';
+
+  // stries antidérapantes
+  ctx.strokeStyle = 'rgba(12,32,56,.4)';
   ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 1; i <= 4; i++) {
+    const gy = -len / 2 + (len * 0.6 * i) / 5.5;
+    ctx.moveTo(-w * 0.34, gy);
+    ctx.lineTo(w * 0.34, gy);
+  }
   ctx.stroke();
 
-  ctx.fillStyle = 'rgba(255,255,255,.55)';
-  ctx.beginPath();
-  ctx.ellipse(-w * 0.16, -h * 0.16, w * 0.14, h * 0.2, -0.3, 0, Math.PI * 2);
+  // col
+  const steel = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+  steel.addColorStop(0, '#8b98a8');
+  steel.addColorStop(0.4, '#ffffff');
+  steel.addColorStop(1, '#7e8b9c');
+  ctx.fillStyle = steel;
+  roundRect(-w * 0.24, len * 0.08, w * 0.48, len * 0.14, 1.5);
   ctx.fill();
+
+  // tête et lames
+  ctx.fillStyle = steel;
+  roundRect(-w * 0.92, len * 0.19, w * 1.84, len * 0.24, 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.95)';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (let i = 0; i < 2; i++) {
+    const by = len * (0.25 + i * 0.08);
+    ctx.moveTo(-w * 0.8, by);
+    ctx.lineTo(w * 0.8, by);
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#8be9fd';
+  roundRect(-w * 0.9, len * 0.4, w * 1.8, len * 0.05, 1);
+  ctx.fill();
+
+  // éclat sur le manche
+  ctx.fillStyle = 'rgba(255,255,255,.5)';
+  roundRect(-w * 0.22, -len * 0.44, w * 0.16, len * 0.42, w * 0.08);
+  ctx.fill();
+
   ctx.restore();
 }
 
@@ -1164,7 +1197,7 @@ function drawBonus(b) {
     ctx.arc(0, 0, 13, b.bob, b.bob + Math.PI * 1.5);
     ctx.stroke();
   } else if (b.kind === 'clipper') {
-    // nail clipper: chromed body, lever across the top, jaw at the bottom
+    // razor clipper: chromed body, lever across the top, jaw at the bottom
     ctx.rotate(Math.sin(b.bob * 0.5) * 0.25);
     const metal = ctx.createLinearGradient(-6, 0, 6, 0);
     metal.addColorStop(0, '#9fb3cc');
@@ -2085,7 +2118,7 @@ function draw() {
   if (state === 'cat') drawCatScene();
   drawParticles();
   for (const fry of fries) drawFry(fry);
-  for (const nail of nails) drawNail(nail);
+  for (const razor of razors) drawRazor(razor);
   if (state !== 'dead' && state !== 'downed') {
     if (state !== 'cat') drawNoodle();
     drawPlayer();
@@ -2106,7 +2139,7 @@ function draw() {
       ['ALEXANDRE', 'title'],
       '…et Sabrina, la princesse aux pieds',
       '',
-      'Grimpe 500 m. Évite les ongles volants.',
+      'Grimpe 500 m. Évite les rasoirs volants.',
       ['Ils coûtent 1 Red Bull sur 3 — et tu as 3 vies.', 'dim'],
       ['Ramasse les canettes, les coupe-ongles, les codes Uber Eats.', 'dim'],
       '',
@@ -2117,14 +2150,14 @@ function draw() {
     panel([['PAUSE', 'big'], ['appuie sur P pour reprendre', 'dim']]);
   } else if (state === 'downed') {
     panel([
-      [deathReason === 'fall' ? 'Il est tombé.' : 'Les ongles l’ont eu.', 'big'],
+      [deathReason === 'fall' ? 'Il est tombé.' : 'Les rasoirs l’ont eu.', 'big'],
       [`${lives} ${lives === 1 ? 'vie restante' : 'vies restantes'}`, 'body'],
       ['retour au dernier checkpoint…', 'dim'],
     ], { dim: 0.5, align: 'bottom' });
   } else if (state === 'dead') {
     panel([
       ['AÏE', 'title'],
-      deathReason === 'fall' ? 'Alexandre est tombé dans le vide.' : 'Les ongles l’ont achevé.',
+      deathReason === 'fall' ? 'Alexandre est tombé dans le vide.' : 'Les rasoirs l’ont achevé.',
       ['Plus aucune vie.', 'dim'],
       [`${climbed} m grimpés · record ${best} m`, 'body'],
       '',
@@ -2163,10 +2196,10 @@ function update() {
     stepPlatforms();
     buildPlatforms();
     // stepPlayer a pu le tuer ou lancer une cinématique : on s'arrête là, sinon
-    // un ongle encore en contact lui coûterait une seconde vie dans la même frame.
+    // un rasoir encore en contact lui coûterait une seconde vie dans la même frame.
     if (state === 'play') {
       stepBonuses();
-      stepNails();
+      stepRazors();
       stepFries();
     }
   } else if (state === 'wheel') {
