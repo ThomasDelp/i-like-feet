@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I Like Feet</title>
+<meta name="description" content="A page with a background of flying feet.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦶</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <canvas id="feet" aria-hidden="true"></canvas>
+
+  <main>
+    <h1>I&nbsp;Like&nbsp;Feet</h1>
+    <p class="tagline">Ten toes, zero regrets. Now with 100% more airborne heels.</p>
+
+    <div class="panel">
+      <label>
+        <span>Feet in flight</span>
+        <input id="count" type="range" min="4" max="120" value="36">
+        <output id="countOut">36</output>
+      </label>
+      <label>
+        <span>Flight speed</span>
+        <input id="speed" type="range" min="1" max="40" value="12">
+        <output id="speedOut">1.2×</output>
+      </label>
+      <button id="stomp" type="button">Stomp 👣</button>
+    </div>
+
+    <p class="hint">Tip: press <kbd>space</kbd> to stomp, <kbd>P</kbd> to pause.</p>
+  </main>
+
+  <footer>
+    Built with HTML, CSS and a canvas full of feet ·
+    <a href="https://github.com/ThomasDelp/i-like-feet">source</a>
+  </footer>
+
+  <script src="feet.js"></script>
+</body>
+</html>
