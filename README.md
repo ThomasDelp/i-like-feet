@@ -16,16 +16,35 @@ Foot Princess. Flying **ongles** cost him 1 HP out of 3.
 | <kbd>P</kbd> · <kbd>R</kbd> · <kbd>M</kbd> | Pause · restart · mute |
 | Touch | Hold the left or right half of the canvas |
 
+### Lives and checkpoints
+
+He starts with **3 lives** (up to 5). Running out of HP — or falling below the
+screen — costs one and drops him back to the last **green checkpoint ledge** with
+full HP and a moment of invulnerability; those ledges are wide, appear every
+850 px, fly a flag, and often carry a pickup. The column above a checkpoint is
+regenerated on respawn, so the second attempt is never the same climb. Lose the
+last life and the run is over.
+
+### Bonuses
+
+| | | |
+| --- | --- | --- |
+| ❤️ | **Heart** | +1 HP — or a spare life if he's already whole |
+| ✂️ | **Coupe-ongles** | 8 s shield: ongles shatter on contact instead of hurting |
+| 🪽 | **Winged foot** | launches him up several platforms at once |
+| 🧑‍🦲 | **1UP** | one more Alexandre, up to five |
+
 **Platforms:** purple = solid · teal = sliding · orange = cracks after one bounce ·
-gold = the throne at the summit. Fall below the screen and it's over — the camera
-never comes back down.
+green = checkpoint · gold = the throne at the summit.
 
 **Under the hood:** one tall world column where `y` grows downward, so climbing is
 negative. Platforms are generated procedurally ahead of the camera and culled
 behind it; gaps widen and ledges narrow with altitude. Ongle frequency and speed
-scale with height too. Score is the highest point reached, so falling never
-rewinds it. Everything — Alexandre, the princess, the ongles, the HUD — is drawn
-with canvas primitives; the only audio is a few WebAudio oscillator blips.
+scale with current altitude, while the score tracks the highest point reached, so
+falling never rewinds it. Pickups only attach to static platforms — on moving ones
+they'd drift out of sync. Everything — Alexandre, the princess, the ongles, the
+pickups, the HUD — is drawn with canvas primitives; the only audio is a few
+WebAudio oscillator blips.
 
 ## Files
 

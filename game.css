@@ -77,6 +77,25 @@ canvas:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 4px; 
   line-height: 1.9;
 }
 
+.legend h2 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.legend dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.legend dt { color: var(--ink); white-space: nowrap; }
+.legend dd { margin: 0; }
+
 kbd {
   padding: 0.1rem 0.4rem;
   border: 1px solid var(--panel-line);

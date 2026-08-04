@@ -14,6 +14,19 @@ const MOVE_MAX = 5.4;
 const FRICTION = 0.9;
 const MAX_HP = 3;
 const INVULN = 112;           // frames of mercy after an ongle connects
+const START_LIVES = 3;
+const MAX_LIVES = 5;
+const CLIPPER_TIME = 8 * 60;  // how long a nail clipper keeps ongles off him
+const BOOST_VY = -20.5;       // winged-foot launch, ~2.5 platforms in one go
+const REST_EVERY = 850;       // world px between checkpoint platforms
+const DOWN_TIME = 78;         // frames of the "he's down" beat before respawning
+
+const BONUS = {
+  heart:   { label: '+1 HP',         spark: '#ff6f91', glow: 'rgba(255,111,145,.4)' },
+  life:    { label: '1 UP',          spark: '#ffd166', glow: 'rgba(255,209,102,.4)' },
+  clipper: { label: 'COUPE-ONGLES!', spark: '#8bd7ff', glow: 'rgba(139,215,255,.4)' },
+  boost:   { label: 'WHEEE!',        spark: '#8bffc8', glow: 'rgba(139,255,200,.4)' },
+};
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -50,6 +63,11 @@ const sfx = {
   crack: () => beep(90, 0.12, 'triangle', 0.05),
   dead: () => { beep(240, 0.2, 'square', 0.07); setTimeout(() => beep(150, 0.35, 'square', 0.07), 160); },
   win: () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.22, 'triangle', 0.07), i * 130)),
+  pickup: () => { beep(660, 0.08, 'triangle', 0.06); setTimeout(() => beep(880, 0.1, 'triangle', 0.05), 70); },
+  oneup: () => [784, 988, 1319].forEach((f, i) => setTimeout(() => beep(f, 0.13, 'triangle', 0.06), i * 90)),
+  boost: () => { beep(300, 0.2, 'sawtooth', 0.05); setTimeout(() => beep(720, 0.18, 'triangle', 0.05), 90); },
+  clip: () => beep(1500, 0.05, 'square', 0.045),
+  check: () => { beep(523, 0.1, 'triangle', 0.06); setTimeout(() => beep(784, 0.16, 'triangle', 0.06), 90); },
 };
 
 /* ----------------------------------------------------------------- input */
@@ -66,9 +84,10 @@ function steer() {
 
 /* ----------------------------------------------------------------- state */
 
-let state = 'title';          // title | play | pause | dead | win
-let player, platforms, nails, particles, backFeet;
+let state = 'title';          // title | play | pause | downed | dead | win
+let player, platforms, nails, bonuses, toasts, particles, backFeet;
 let camY, groundY, goalY, best, shake, frames, nailTimer, endTimer;
+let lives, checkpoint, nextRest, downTimer, deathReason;
 
 function reset() {
   groundY = 0;
@@ -79,14 +98,20 @@ function reset() {
     x: VIEW.w / 2, y: groundY - 40,
     w: 26, h: 40,
     vx: 0, vy: 0,
-    face: 1, hp: MAX_HP, invuln: 0,
+    face: 1, hp: MAX_HP, invuln: 0, clipper: 0,
     squash: 0, blink: 0, peak: 0,
   };
 
-  platforms = [{
-    x: VIEW.w / 2 - 90, y: groundY, w: 180, type: 'ground', dead: false,
-  }];
+  lives = START_LIVES;
+  checkpoint = { x: VIEW.w / 2 - 90, y: groundY, w: 180, type: 'ground' };
+  nextRest = groundY - REST_EVERY;
+  downTimer = 0;
+  deathReason = null;
+
+  platforms = [{ ...checkpoint, dead: false }];
   nails = [];
+  bonuses = [];
+  toasts = [];
   particles = [];
   shake = 0;
   frames = 0;
@@ -131,11 +156,18 @@ function buildPlatforms() {
       break;
     }
 
-    const width = rand(96 - t * 34, 128 - t * 40);
-    const roll = Math.random();
+    let width = rand(96 - t * 34, 128 - t * 40);
     let type = 'normal';
-    if (climbed > 900 && roll < 0.16 + t * 0.12) type = 'moving';
-    else if (climbed > 1800 && roll < 0.32 + t * 0.14) type = 'fragile';
+    if (next <= nextRest) {
+      // A wide, safe checkpoint ledge every REST_EVERY pixels.
+      type = 'rest';
+      width = 132;
+      nextRest = next - REST_EVERY;
+    } else {
+      const roll = Math.random();
+      if (climbed > 900 && roll < 0.16 + t * 0.12) type = 'moving';
+      else if (climbed > 1800 && roll < 0.32 + t * 0.14) type = 'fragile';
+    }
 
     const plat = {
       x: rand(6, VIEW.w - width - 6), y: next, w: width, type, dead: false,
@@ -147,8 +179,35 @@ function buildPlatforms() {
       plat.rate = rand(0.012, 0.026);
     }
     platforms.push(plat);
+    maybeBonus(plat, climbed);
     top = next;
   }
+}
+
+/* Pickups ride above static platforms; on moving ones they'd drift out of sync.
+   Rest ledges are generous, since reaching one is already an achievement. */
+function maybeBonus(plat, climbed) {
+  if (plat.type === 'moving') return;
+  const roll = Math.random();
+  let kind = null;
+
+  if (plat.type === 'rest') {
+    if (roll < 0.42) kind = 'heart';
+    else if (roll < 0.56) kind = 'clipper';
+  } else if (roll < 0.055) kind = 'boost';
+  else if (roll < 0.10) kind = 'clipper';
+  else if (roll < 0.145) kind = 'heart';
+  else if (roll < 0.16 && climbed > 1200) kind = 'life';
+
+  if (!kind) return;
+  bonuses.push({
+    kind,
+    x: clamp(plat.x + plat.w / 2, 26, VIEW.w - 26),
+    y: plat.y - 34,
+    r: 13,
+    bob: rand(0, Math.PI * 2),
+    taken: false,
+  });
 }
 
 function stepPlatforms() {
@@ -163,10 +222,68 @@ function stepPlatforms() {
   platforms = platforms.filter((p) => !p.dead && p.y < camY + VIEW.h + 200);
 }
 
+/* ------------------------------------------------------------------ bonuses */
+
+function stepBonuses() {
+  for (const b of bonuses) {
+    b.bob += 0.06;
+    if (!b.taken && overlapsPlayer(b.x, b.y + Math.sin(b.bob) * 4, b.r)) collect(b);
+  }
+  bonuses = bonuses.filter((b) => !b.taken && b.y < camY + VIEW.h + 220);
+}
+
+function collect(b) {
+  b.taken = true;
+  let label = BONUS[b.kind].label;
+
+  if (b.kind === 'heart') {
+    if (player.hp < MAX_HP) {
+      player.hp += 1;
+      sfx.pickup();
+    } else if (lives < MAX_LIVES) {
+      // A spare heart with nothing to heal becomes a spare life.
+      lives += 1;
+      label = '+1 LIFE';
+      sfx.oneup();
+    } else {
+      label = 'ALREADY PERFECT';
+      sfx.pickup();
+    }
+  } else if (b.kind === 'life') {
+    lives = Math.min(MAX_LIVES, lives + 1);
+    if (lives === MAX_LIVES) label = 'MAX LIVES';
+    sfx.oneup();
+  } else if (b.kind === 'clipper') {
+    player.clipper = CLIPPER_TIME;
+    sfx.pickup();
+  } else if (b.kind === 'boost') {
+    player.vy = BOOST_VY;
+    player.squash = 9;
+    sfx.boost();
+  }
+
+  burst(b.x, b.y, 13, ['#fdf6ef', BONUS[b.kind].spark], 3.2);
+  toast(label, b.x, b.y - 14, BONUS[b.kind].spark);
+}
+
+/* ------------------------------------------------------------------- toasts */
+
+function toast(text, x, y, color) {
+  toasts.push({ text, x: clamp(x, 52, VIEW.w - 52), y, color, age: 0, life: 72 });
+}
+
+function stepToasts() {
+  for (const t of toasts) {
+    t.age++;
+    t.y -= 0.55;
+  }
+  toasts = toasts.filter((t) => t.age < t.life);
+}
+
 /* ------------------------------------------------------------------ nails */
 
 function spawnNail() {
-  const climbed = player.peak * 10;
+  const climbed = altitude() * 10;
   const t = clamp(climbed / GOAL, 0, 1);
   const fromLeft = Math.random() < 0.5;
   const speed = rand(2.1, 3.4) + t * 1.9;
@@ -182,7 +299,7 @@ function spawnNail() {
 }
 
 function stepNails() {
-  const climbed = player.peak * 10;
+  const climbed = altitude() * 10;
   const t = clamp(climbed / GOAL, 0, 1);
 
   if (climbed > 260 && --nailTimer <= 0) {
@@ -195,16 +312,30 @@ function stepNails() {
     nail.x += nail.vx;
     nail.y += nail.vy;
     nail.rot += nail.spin;
-    if (player.invuln === 0 && hitsPlayer(nail)) hurt(nail);
+    if (nail.gone) continue;
+    if (player.clipper > 0 && overlapsPlayer(nail.x, nail.y, nail.r + 14)) clip(nail);
+    else if (player.invuln === 0 && hitsPlayer(nail)) hurt(nail);
   }
 
   nails = nails.filter((n) => n.x > -60 && n.x < VIEW.w + 60 && n.y < camY + VIEW.h + 120 && !n.gone);
 }
 
+/* Circle against Alexandre's body box — used for both ongles and pickups. */
+function overlapsPlayer(x, y, r) {
+  const nx = clamp(x, player.x - player.w / 2, player.x + player.w / 2);
+  const ny = clamp(y, player.y - player.h / 2, player.y + player.h / 2);
+  return Math.hypot(x - nx, y - ny) < r;
+}
+
 function hitsPlayer(nail) {
-  const nx = clamp(nail.x, player.x - player.w / 2, player.x + player.w / 2);
-  const ny = clamp(nail.y, player.y - player.h / 2, player.y + player.h / 2);
-  return Math.hypot(nail.x - nx, nail.y - ny) < nail.r * 0.8;
+  return overlapsPlayer(nail.x, nail.y, nail.r * 0.8);
+}
+
+/* Clipped, not hurt: the nail clipper turns ongles into confetti. */
+function clip(nail) {
+  nail.gone = true;
+  burst(nail.x, nail.y, 9, ['#8bd7ff', '#fdf6ef', '#c9e9ff'], 2.6);
+  sfx.clip();
 }
 
 function hurt(nail) {
@@ -213,14 +344,51 @@ function hurt(nail) {
   player.invuln = INVULN;
   shake = 14;
   burst(nail.x, nail.y, 14, ['#ffd9c9', '#ff8fa3', '#ffe6b0']);
-  if (player.hp <= 0) {
-    sfx.dead();
+  if (player.hp <= 0) downed('ongles');
+  else sfx.hurt();
+}
+
+/* One life gone. If any remain he drops back to his last checkpoint. */
+function downed(reason) {
+  lives -= 1;
+  deathReason = reason;
+  player.hp = 0;
+  player.clipper = 0;
+  shake = 18;
+  burst(player.x, player.y, 20, ['#ffd9c9', '#ff8fa3', '#fdf6ef'], 4.2);
+  saveBest();
+
+  if (lives <= 0) {
     state = 'dead';
     endTimer = 0;
-    saveBest();
+    sfx.dead();
   } else {
+    state = 'downed';
+    downTimer = DOWN_TIME;
     sfx.hurt();
   }
+}
+
+/* Rebuild the column from the checkpoint up: whatever was there has long since
+   been culled, so the climb above it is freshly generated. */
+function respawn() {
+  platforms = [{ ...checkpoint, dead: false }];
+  nails = [];
+  bonuses = [];
+  nextRest = checkpoint.y - REST_EVERY;
+
+  player.x = checkpoint.x + checkpoint.w / 2;
+  player.y = checkpoint.y - player.h / 2 - 2;
+  player.vx = 0;
+  player.vy = 0;
+  player.hp = MAX_HP;
+  player.invuln = INVULN;
+  nailTimer = 130;
+
+  camY = checkpoint.y - VIEW.h * 0.55;
+  buildPlatforms();
+  toast('GO AGAIN', player.x, player.y - 46, '#8bffc8');
+  state = 'play';
 }
 
 /* -------------------------------------------------------------- particles */
@@ -285,7 +453,11 @@ function stepPlayer() {
   }
 
   if (player.invuln > 0) player.invuln--;
+  if (player.clipper > 0) player.clipper--;
   if (player.squash > 0) player.squash--;
+  if (player.vy < -15 && frames % 2 === 0) {
+    burst(player.x, player.y + player.h / 2, 2, ['#8bffc8', 'rgba(200,255,225,.9)'], 1.2);
+  }
   if (--player.blink < 0) player.blink = Math.round(rand(90, 240));
 
   player.peak = Math.max(player.peak, (groundY - player.h / 2 - player.y) / 10);
@@ -293,13 +465,7 @@ function stepPlayer() {
   // Camera only climbs.
   camY = Math.min(camY, player.y - VIEW.h * 0.55);
 
-  if (player.y - camY > VIEW.h + 70) {
-    sfx.dead();
-    state = 'dead';
-    endTimer = 0;
-    player.hp = 0;
-    saveBest();
-  }
+  if (player.y - camY > VIEW.h + 70) downed('fall');
 }
 
 function land(plat) {
@@ -312,6 +478,11 @@ function land(plat) {
   if (plat.type === 'fragile' && !plat.cracking) {
     plat.cracking = 10;
     sfx.crack();
+  }
+  if (plat.type === 'rest' && plat.y < checkpoint.y) {
+    checkpoint = { x: plat.x, y: plat.y, w: plat.w, type: 'rest' };
+    toast('CHECKPOINT', player.x, plat.y - 34, '#8bffc8');
+    sfx.check();
   }
   if (plat.type === 'throne') win();
 }
@@ -326,6 +497,11 @@ function win() {
       ['#ffd166', '#ff6f91', '#8be9fd', '#fdf6ef', '#c084fc'], 4.5);
   }
   saveBest();
+}
+
+/* How high he is right now, in metres — this drives difficulty. */
+function altitude() {
+  return Math.max(0, (groundY - player.h / 2 - player.y) / 10);
 }
 
 /* Score is the highest point reached, in metres, so falling never rewinds it. */
@@ -380,6 +556,7 @@ function drawPlatform(plat) {
   if (plat.type === 'moving') { top = '#6fd3e8'; side = '#2f7f96'; }
   if (plat.type === 'fragile') { top = '#f3a26d'; side = '#a55b2c'; }
   if (plat.type === 'ground') { top = '#7d5aa8'; side = '#3c2a5c'; }
+  if (plat.type === 'rest') { top = '#7ee0a8'; side = '#2f7d55'; }
   if (plat.type === 'throne') { top = '#ffd166'; side = '#c98f22'; }
   if (plat.cracking) { top = '#ff8f6b'; side = '#8c3d20'; }
 
@@ -389,6 +566,23 @@ function drawPlatform(plat) {
   ctx.fillStyle = top;
   roundRect(plat.x, y, plat.w, h - 4, 6);
   ctx.fill();
+
+  if (plat.type === 'rest') {
+    // little flag, so a checkpoint is obvious from a screen away
+    ctx.strokeStyle = '#d9fff0';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(plat.x + 12, y);
+    ctx.lineTo(plat.x + 12, y - 15);
+    ctx.stroke();
+    ctx.fillStyle = '#8bffc8';
+    ctx.beginPath();
+    ctx.moveTo(plat.x + 12, y - 15);
+    ctx.lineTo(plat.x + 25, y - 11);
+    ctx.lineTo(plat.x + 12, y - 7);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   if (plat.type === 'fragile') {
     ctx.strokeStyle = 'rgba(80,30,10,.5)';
@@ -433,6 +627,123 @@ function drawNail(nail) {
   ctx.ellipse(-w * 0.16, -h * 0.16, w * 0.14, h * 0.2, -0.3, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+}
+
+/* A tiny bald-with-glasses head, used for the 1UP pickup and the lives counter. */
+function drawFaceIcon(x, y, r) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = '#f0c49b';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#241c33';
+  ctx.lineWidth = 1.2;
+  ctx.fillStyle = 'rgba(220,240,255,.6)';
+  ctx.beginPath(); ctx.arc(-r * 0.38, 0, r * 0.34, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(r * 0.38, 0, r * 0.34, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.04, 0); ctx.lineTo(r * 0.04, 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawBonus(b) {
+  const y = b.y - camY + Math.sin(b.bob) * 4;
+  if (y < -40 || y > VIEW.h + 40) return;
+
+  ctx.save();
+  ctx.translate(b.x, y);
+
+  const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 24);
+  glow.addColorStop(0, BONUS[b.kind].glow);
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, 24, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (b.kind === 'heart') {
+    drawHeart(0, 2, 10, true);
+  } else if (b.kind === 'life') {
+    drawFaceIcon(0, 0, 9);
+    ctx.strokeStyle = '#ffd166';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 13, b.bob, b.bob + Math.PI * 1.5);
+    ctx.stroke();
+  } else if (b.kind === 'clipper') {
+    // nail clipper: chromed body, lever across the top, jaw at the bottom
+    ctx.rotate(Math.sin(b.bob * 0.5) * 0.25);
+    const metal = ctx.createLinearGradient(-6, 0, 6, 0);
+    metal.addColorStop(0, '#9fb3cc');
+    metal.addColorStop(0.45, '#ffffff');
+    metal.addColorStop(1, '#8fa3bd');
+    ctx.fillStyle = metal;
+    roundRect(-5, -9, 10, 18, 4);
+    ctx.fill();
+    ctx.fillStyle = '#dfe8f5';
+    roundRect(-8, -12, 16, 4, 2);
+    ctx.fill();
+    ctx.fillStyle = '#8fa3bd';
+    ctx.beginPath();
+    ctx.moveTo(-5, 7); ctx.lineTo(0, 12); ctx.lineTo(5, 7);
+    ctx.closePath();
+    ctx.fill();
+  } else if (b.kind === 'boost') {
+    // winged foot
+    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(dir * 5, -3);
+      ctx.quadraticCurveTo(dir * 17, -9, dir * 15, 2);
+      ctx.quadraticCurveTo(dir * 10, 1, dir * 5, 3);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = '#fff8e7';
+    ctx.beginPath();
+    ctx.ellipse(0, -1, 6, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(1, 8, 4.4, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-4, -9, 2.1, 0, Math.PI * 2);
+    ctx.arc(0, -11, 1.8, 0, Math.PI * 2);
+    ctx.arc(4, -9.5, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/* Shield ring while the clipper is live; it blinks out over the last second. */
+function drawShield() {
+  if (player.clipper <= 0) return;
+  if (player.clipper < 60 && Math.floor(frames / 4) % 2 === 0) return;
+  const pulse = 0.34 + Math.sin(frames * 0.16) * 0.12;
+  ctx.strokeStyle = `rgba(139, 215, 255, ${pulse})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y - camY - 4, 27, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawToasts() {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 14px ui-rounded, system-ui, sans-serif';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(12,7,18,.8)';
+  for (const t of toasts) {
+    const fade = t.age < 8 ? t.age / 8 : 1 - Math.max(0, (t.age - 44) / (t.life - 44));
+    ctx.globalAlpha = clamp(fade, 0, 1);
+    ctx.strokeText(t.text, t.x, t.y - camY);
+    ctx.fillStyle = t.color;
+    ctx.fillText(t.text, t.x, t.y - camY);
+  }
+  ctx.globalAlpha = 1;
 }
 
 /* Alexandre: bald, glasses, sweater vest, permanently mid-hop. */
@@ -631,6 +942,24 @@ function drawHud() {
     drawHeart(20 + i * 26, 24, 9, i < player.hp);
   }
 
+  // lives, as spare Alexandres
+  drawFaceIcon(104, 20, 8);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fdf6ef';
+  ctx.font = 'bold 14px ui-rounded, system-ui, sans-serif';
+  ctx.fillText(`×${Math.max(0, lives)}`, 116, 21);
+
+  // clipper timer
+  if (player.clipper > 0) {
+    ctx.fillStyle = 'rgba(255,255,255,.16)';
+    roundRect(14, 40, 76, 6, 3);
+    ctx.fill();
+    ctx.fillStyle = '#8bd7ff';
+    roundRect(14, 40, 76 * (player.clipper / CLIPPER_TIME), 6, 3);
+    ctx.fill();
+  }
+
   ctx.textAlign = 'right';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = '#fdf6ef';
@@ -731,9 +1060,14 @@ function draw() {
   drawBackground();
   drawPrincess();
   for (const plat of platforms) drawPlatform(plat);
+  for (const bonus of bonuses) drawBonus(bonus);
   drawParticles();
   for (const nail of nails) drawNail(nail);
-  if (state !== 'dead' || player.hp > 0) drawPlayer();
+  if (state !== 'dead' && state !== 'downed') {
+    drawPlayer();
+    drawShield();
+  }
+  drawToasts();
   drawHud();
   ctx.restore();
 
@@ -747,17 +1081,25 @@ function draw() {
       '…and the Foot Princess',
       '',
       'Climb 500 m. Dodge the flying ongles.',
-      ['They take 1 HP out of 3.', 'dim'],
+      ['They take 1 HP out of 3 — and you have 3 lives.', 'dim'],
+      ['Grab hearts, nail clippers and winged feet.', 'dim'],
       '',
       ['← → or A / D to steer · he bounces by himself', 'dim'],
       ['press any key, or tap, to begin', 'big'],
     ]);
   } else if (state === 'pause') {
     panel([['PAUSED', 'big'], ['press P to continue', 'dim']]);
+  } else if (state === 'downed') {
+    panel([
+      [deathReason === 'fall' ? 'He fell.' : 'The ongles got him.', 'big'],
+      [`${lives} ${lives === 1 ? 'life' : 'lives'} left`, 'body'],
+      ['back to the last checkpoint…', 'dim'],
+    ], { dim: 0.5, align: 'bottom' });
   } else if (state === 'dead') {
     panel([
       ['OUCH', 'title'],
-      player.hp <= 0 ? 'The ongles got him.' : 'Alexandre fell into the void.',
+      deathReason === 'fall' ? 'Alexandre fell into the void.' : 'The ongles finished him.',
+      ['No lives left.', 'dim'],
       [`${climbed} m climbed · best ${best} m`, 'body'],
       '',
       'The Foot Princess waits still.',
@@ -794,7 +1136,11 @@ function update() {
     stepPlayer();
     stepPlatforms();
     buildPlatforms();
+    stepBonuses();
     stepNails();
+  } else if (state === 'downed') {
+    stepPlatforms();
+    if (--downTimer <= 0) respawn();
   } else if (state === 'win' || state === 'dead') {
     endTimer++;
     stepPlatforms();
@@ -808,6 +1154,7 @@ function update() {
     }
   }
   stepParticles();
+  stepToasts();
 }
 
 let last = performance.now();
@@ -861,6 +1208,7 @@ function pointerDir(event) {
 
 canvas.addEventListener('pointerdown', (event) => {
   canvas.focus();
+  if (state === 'downed') return;                  // it respawns on its own
   if (state !== 'play' && state !== 'pause') { onAction(); return; }
   touchDir = pointerDir(event);
   canvas.setPointerCapture(event.pointerId);
