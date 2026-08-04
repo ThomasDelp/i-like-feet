@@ -3,7 +3,8 @@
    Alexandre bounces automatically; the player only steers left/right. The world
    is one tall column: y grows downward, so climbing means going negative. The
    camera only ever moves up, which is what makes falling behind fatal.
-   Everything is drawn with canvas primitives — no image assets. */
+   Everything is drawn with canvas primitives; the one asset is the cat's
+   soundtrack in assets/. */
 
 const VIEW = { w: 480, h: 720 };
 const GOAL = 5000;            // world pixels from the ground up to the princess
@@ -17,15 +18,23 @@ const INVULN = 112;           // frames of mercy after an ongle connects
 const START_LIVES = 3;
 const MAX_LIVES = 5;
 const CLIPPER_TIME = 8 * 60;  // how long a nail clipper keeps ongles off him
-const BOOST_VY = -20.5;       // winged-foot launch, ~2.5 platforms in one go
+const BOOST_VY = -20.5;       // Red Bull launch, ~2.5 platforms in one go
 const REST_EVERY = 850;       // world px between checkpoint platforms
 const DOWN_TIME = 78;         // frames of the "he's down" beat before respawning
 
+// The Nvidia cutscene, in frames: feeding, flexing, then the ride up.
+const CAT_FEED = 44;
+const CAT_FLEX = 34;
+const CAT_RIDE = 66;
+const CAT_TOTAL = CAT_FEED + CAT_FLEX + CAT_RIDE;
+const CAT_LIFT = 2000;        // 200 m in Nvidia's paws
+
 const BONUS = {
-  heart:   { label: '+1 HP',         spark: '#ff6f91', glow: 'rgba(255,111,145,.4)' },
-  life:    { label: '1 UP',          spark: '#ffd166', glow: 'rgba(255,209,102,.4)' },
-  clipper: { label: 'COUPE-ONGLES!', spark: '#8bd7ff', glow: 'rgba(139,215,255,.4)' },
-  boost:   { label: 'WHEEE!',        spark: '#8bffc8', glow: 'rgba(139,255,200,.4)' },
+  heart:   { label: '+1 HP',              spark: '#ff6f91', glow: 'rgba(255,111,145,.4)' },
+  life:    { label: '1 UP',               spark: '#ffd166', glow: 'rgba(255,209,102,.4)' },
+  clipper: { label: 'COUPE-ONGLES!',      spark: '#8bd7ff', glow: 'rgba(139,215,255,.4)' },
+  boost:   { label: 'ÇA DONNE DES AILES!', spark: '#ffd166', glow: 'rgba(255,209,102,.4)' },
+  cat:     { label: 'NVIDIA!',            spark: '#76b900', glow: 'rgba(118,185,0,.45)' },
 };
 
 const canvas = document.getElementById('game');
@@ -57,6 +66,39 @@ function beep(freq, duration, type = 'square', gain = 0.06) {
   } catch { /* no audio, no problem */ }
 }
 
+/* The cutscene's soundtrack. The clip runs ~7.5s and the scene ~2.4s, so it
+   plays on over the resumed climb rather than being cut off mid-phrase; it only
+   fades if the run ends, the player mutes, or another cat turns up. */
+const catSound = new Audio('assets/nvidia.m4a');
+catSound.preload = 'auto';
+let catFade = null;
+
+function playCatSound() {
+  if (muted) return;
+  clearInterval(catFade);
+  try {
+    catSound.currentTime = 0;
+    catSound.volume = 1;
+    catSound.play().catch(() => {});
+  } catch { /* no soundtrack, still a good cat */ }
+}
+
+function stopCatSound() {
+  clearInterval(catFade);
+  try { catSound.pause(); } catch { /* nothing to stop */ }
+}
+
+function fadeCatSound() {
+  clearInterval(catFade);
+  catFade = setInterval(() => {
+    catSound.volume = Math.max(0, catSound.volume - 0.08);
+    if (catSound.volume <= 0.01) {
+      clearInterval(catFade);
+      stopCatSound();
+    }
+  }, 40);
+}
+
 const sfx = {
   jump: () => beep(rand(420, 470), 0.09, 'square', 0.045),
   hurt: () => { beep(180, 0.18, 'sawtooth', 0.08); beep(120, 0.26, 'sawtooth', 0.06); },
@@ -84,10 +126,11 @@ function steer() {
 
 /* ----------------------------------------------------------------- state */
 
-let state = 'title';          // title | play | pause | downed | dead | win
+let state = 'title';          // title | play | pause | cat | downed | dead | win
 let player, platforms, nails, bonuses, toasts, particles, backFeet;
 let camY, groundY, goalY, best, shake, frames, nailTimer, endTimer;
 let lives, checkpoint, nextRest, downTimer, deathReason;
+let catTimer, catFrom, catTarget;
 
 function reset() {
   groundY = 0;
@@ -107,6 +150,10 @@ function reset() {
   nextRest = groundY - REST_EVERY;
   downTimer = 0;
   deathReason = null;
+  catTimer = 0;
+  catFrom = 0;
+  catTarget = 0;
+  stopCatSound();
 
   platforms = [{ ...checkpoint, dead: false }];
   nails = [];
@@ -192,12 +239,13 @@ function maybeBonus(plat, climbed) {
   let kind = null;
 
   if (plat.type === 'rest') {
-    if (roll < 0.42) kind = 'heart';
-    else if (roll < 0.56) kind = 'clipper';
-  } else if (roll < 0.055) kind = 'boost';
-  else if (roll < 0.10) kind = 'clipper';
-  else if (roll < 0.145) kind = 'heart';
-  else if (roll < 0.16 && climbed > 1200) kind = 'life';
+    if (roll < 0.25) kind = 'heart';
+    else if (roll < 0.35) kind = 'clipper';
+  } else if (roll < 0.022) kind = 'boost';
+  else if (roll < 0.042) kind = 'clipper';
+  else if (roll < 0.062) kind = 'heart';
+  else if (roll < 0.078 && climbed > 600) kind = 'cat';
+  else if (roll < 0.085 && climbed > 1200) kind = 'life';
 
   if (!kind) return;
   bonuses.push({
@@ -260,10 +308,64 @@ function collect(b) {
     player.vy = BOOST_VY;
     player.squash = 9;
     sfx.boost();
+  } else if (b.kind === 'cat') {
+    startCat();
   }
 
   burst(b.x, b.y, 13, ['#fdf6ef', BONUS[b.kind].spark], 3.2);
   toast(label, b.x, b.y - 14, BONUS[b.kind].spark);
+}
+
+/* --------------------------------------------------------------- Nvidia the cat
+
+   Alexandre finds his cat, feeds it croquettes, and the cat — now enormous —
+   carries him 200 m up the tower. Everything else freezes while it plays. */
+
+function startCat() {
+  state = 'cat';
+  catTimer = 0;
+  catFrom = player.y;
+  catTarget = Math.max(goalY + 40, player.y - CAT_LIFT);
+  player.vx = 0;
+  player.vy = 0;
+  player.invuln = INVULN;
+  nails = [];
+  playCatSound();
+}
+
+function stepCat() {
+  catTimer++;
+
+  if (catTimer === CAT_FEED) {
+    sfx.pickup();
+    shake = 10;
+  }
+  if (catTimer === CAT_FEED + CAT_FLEX) {
+    sfx.boost();
+    shake = 16;
+    toast('+200 m', player.x, player.y - 70, '#76b900');
+  }
+
+  // The ride: both the cat and the camera climb, generating the tower as it goes.
+  if (catTimer > CAT_FEED + CAT_FLEX) {
+    const p = clamp((catTimer - CAT_FEED - CAT_FLEX) / CAT_RIDE, 0, 1);
+    const eased = p * p * (3 - 2 * p);
+    player.y = catFrom + (catTarget - catFrom) * eased;
+    player.peak = Math.max(player.peak, (groundY - player.h / 2 - player.y) / 10);
+    camY = player.y - VIEW.h * 0.55;
+    buildPlatforms();
+    if (catTimer % 2 === 0) {
+      burst(player.x + rand(-16, 16), player.y + 42, 2, ['#76b900', '#d7ff8a', '#fdf6ef'], 1.4);
+    }
+  }
+
+  if (catTimer >= CAT_TOTAL) {
+    state = 'play';
+    player.vy = 1;
+    player.invuln = 80;
+    nailTimer = Math.max(nailTimer, 100);
+    burst(player.x, player.y, 22, ['#76b900', '#d7ff8a', '#fdf6ef'], 4.2);
+  }
 }
 
 /* ------------------------------------------------------------------- toasts */
@@ -361,6 +463,7 @@ function downed(reason) {
   if (lives <= 0) {
     state = 'dead';
     endTimer = 0;
+    fadeCatSound();
     sfx.dead();
   } else {
     state = 'downed';
@@ -456,7 +559,7 @@ function stepPlayer() {
   if (player.clipper > 0) player.clipper--;
   if (player.squash > 0) player.squash--;
   if (player.vy < -15 && frames % 2 === 0) {
-    burst(player.x, player.y + player.h / 2, 2, ['#8bffc8', 'rgba(200,255,225,.9)'], 1.2);
+    burst(player.x, player.y + player.h / 2, 2, ['#ffd166', '#5b8def', 'rgba(255,255,255,.9)'], 1.2);
   }
   if (--player.blink < 0) player.blink = Math.round(rand(90, 240));
 
@@ -491,6 +594,7 @@ function win() {
   if (state === 'win') return;
   state = 'win';
   endTimer = 0;
+  fadeCatSound();
   sfx.win();
   for (let i = 0; i < 5; i++) {
     burst(rand(60, VIEW.w - 60), goalY - rand(0, 120), 16,
@@ -691,31 +795,242 @@ function drawBonus(b) {
     ctx.closePath();
     ctx.fill();
   } else if (b.kind === 'boost') {
-    // winged foot
-    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    // energy drink: silver can, blue wedges, gold sun, two charging bulls
+    ctx.rotate(Math.sin(b.bob * 0.6) * 0.16);
+    const body = ctx.createLinearGradient(-7, 0, 7, 0);
+    body.addColorStop(0, '#8e97a8');
+    body.addColorStop(0.4, '#f2f5fa');
+    body.addColorStop(1, '#98a2b3');
+    ctx.fillStyle = body;
+    roundRect(-6.5, -11, 13, 22, 3);
+    ctx.fill();
+
+    ctx.save();
+    roundRect(-6.5, -11, 13, 22, 3);
+    ctx.clip();
+    ctx.fillStyle = '#20418f';
+    ctx.beginPath();
+    ctx.moveTo(-8, 3); ctx.lineTo(2, -13); ctx.lineTo(8, -13); ctx.lineTo(-8, 11);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-8, 15); ctx.lineTo(7, -2); ctx.lineTo(9, 5); ctx.lineTo(-2, 15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffd166';
+    ctx.beginPath();
+    ctx.arc(0, 0, 4.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#c62828';
     for (const dir of [-1, 1]) {
       ctx.beginPath();
-      ctx.moveTo(dir * 5, -3);
-      ctx.quadraticCurveTo(dir * 17, -9, dir * 15, 2);
-      ctx.quadraticCurveTo(dir * 10, 1, dir * 5, 3);
+      ctx.moveTo(dir * 0.8, -2.6); ctx.lineTo(dir * 5.4, -0.5); ctx.lineTo(dir * 0.8, 2.3);
       ctx.closePath();
       ctx.fill();
     }
-    ctx.fillStyle = '#fff8e7';
-    ctx.beginPath();
-    ctx.ellipse(0, -1, 6, 8, 0, 0, Math.PI * 2);
+    ctx.restore();
+
+    ctx.fillStyle = '#cfd6e2';
+    roundRect(-5, -12.5, 10, 3, 1.5);
     ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(1, 8, 4.4, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(-4, -9, 2.1, 0, Math.PI * 2);
-    ctx.arc(0, -11, 1.8, 0, Math.PI * 2);
-    ctx.arc(4, -9.5, 1.5, 0, Math.PI * 2);
-    ctx.fill();
+  } else if (b.kind === 'cat') {
+    drawCat(0, 6, 0.62, false, false);
   }
 
   ctx.restore();
+}
+
+/* Nvidia: grey tabby, green eyes, green collar. `buff` swaps in the arms he
+   grows after eating, and the whole thing scales from one drawing. */
+function drawCat(x, y, s, buff, mouthOpen) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  ctx.lineCap = 'round';
+
+  // tail
+  ctx.strokeStyle = '#7f8497';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(10, 6);
+  ctx.quadraticCurveTo(25, 4, 21, -12);
+  ctx.stroke();
+
+  // body
+  ctx.fillStyle = '#9aa0b5';
+  ctx.beginPath();
+  ctx.ellipse(0, 4, buff ? 18 : 12, buff ? 16 : 13, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (buff) {
+    ctx.fillStyle = '#8b91a8';
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(dir * 16, -7, 7.5, 12, dir * 0.45, 0, Math.PI * 2);   // bicep
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(dir * 21, -21, 5.5, 0, Math.PI * 2);                       // paw, holding him up
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,.14)';
+    ctx.beginPath();
+    ctx.ellipse(-6, 0, 6, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(6, 0, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = '#8b91a8';
+    ctx.beginPath();
+    ctx.ellipse(-6, 14, 4.5, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(6, 14, 4.5, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // head and ears
+  const hy = buff ? -17 : -11;
+  ctx.fillStyle = '#a8adc4';
+  ctx.beginPath();
+  ctx.moveTo(-10, hy - 5); ctx.lineTo(-12, hy - 18); ctx.lineTo(-2, hy - 10); ctx.closePath();
+  ctx.moveTo(10, hy - 5); ctx.lineTo(12, hy - 18); ctx.lineTo(2, hy - 10); ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#e5a0b5';
+  ctx.beginPath();
+  ctx.moveTo(-9.5, hy - 7); ctx.lineTo(-10.6, hy - 14.5); ctx.lineTo(-5, hy - 10); ctx.closePath();
+  ctx.moveTo(9.5, hy - 7); ctx.lineTo(10.6, hy - 14.5); ctx.lineTo(5, hy - 10); ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#a8adc4';
+  ctx.beginPath();
+  ctx.arc(0, hy, 11, 0, Math.PI * 2);
+  ctx.fill();
+
+  // tabby stripes
+  ctx.strokeStyle = '#8b91a8';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  for (const dx of [-3.5, 0, 3.5]) {
+    ctx.moveTo(dx, hy - 9.5);
+    ctx.lineTo(dx, hy - 5.5);
+  }
+  ctx.stroke();
+
+  // eyes
+  ctx.fillStyle = '#76b900';
+  ctx.beginPath();
+  ctx.ellipse(-4.6, hy - 1, 2.6, 3.1, 0, 0, Math.PI * 2);
+  ctx.ellipse(4.6, hy - 1, 2.6, 3.1, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#1c2415';
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.moveTo(-4.6, hy - 3.4); ctx.lineTo(-4.6, hy + 1.4);
+  ctx.moveTo(4.6, hy - 3.4); ctx.lineTo(4.6, hy + 1.4);
+  ctx.stroke();
+
+  // nose, mouth, whiskers
+  ctx.fillStyle = '#e5849b';
+  ctx.beginPath();
+  ctx.moveTo(-2, hy + 3); ctx.lineTo(2, hy + 3); ctx.lineTo(0, hy + 5.4);
+  ctx.closePath();
+  ctx.fill();
+  if (mouthOpen) {
+    ctx.fillStyle = '#5a2436';
+    ctx.beginPath();
+    ctx.ellipse(0, hy + 8, 3.6, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.55)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (const dir of [-1, 1]) {
+    ctx.moveTo(dir * 4, hy + 4); ctx.lineTo(dir * 15, hy + 2);
+    ctx.moveTo(dir * 4, hy + 5.5); ctx.lineTo(dir * 15, hy + 7);
+  }
+  ctx.stroke();
+
+  // collar
+  ctx.fillStyle = '#76b900';
+  roundRect(-9.5, hy + 8.5, 19, 4, 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffd166';
+  ctx.beginPath();
+  ctx.arc(0, hy + 13.5, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawBowl(x, y) {
+  ctx.fillStyle = '#c98a4b';
+  ctx.beginPath();
+  ctx.arc(x, y - 3, 6.5, Math.PI, 0);
+  ctx.fill();
+  ctx.fillStyle = '#8b5a2b';
+  ctx.beginPath();
+  ctx.arc(x - 3, y - 5, 1.6, 0, Math.PI * 2);
+  ctx.arc(x + 2.5, y - 6, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#e7dbf0';
+  ctx.beginPath();
+  ctx.moveTo(x - 11, y - 3);
+  ctx.quadraticCurveTo(x, y + 10, x + 11, y - 3);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function caption(text, color) {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 17px ui-rounded, system-ui, sans-serif';
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgba(10,14,6,.85)';
+  ctx.strokeText(text, VIEW.w / 2, VIEW.h - 84);
+  ctx.fillStyle = color;
+  ctx.fillText(text, VIEW.w / 2, VIEW.h - 84);
+}
+
+/* The three beats of the cutscene: croquettes, transformation, ascent. */
+function drawCatScene() {
+  const py = player.y - camY;
+
+  const spot = ctx.createRadialGradient(player.x, py, 10, player.x, py, 200);
+  spot.addColorStop(0, 'rgba(118,185,0,.20)');
+  spot.addColorStop(1, 'rgba(4,8,2,.55)');
+  ctx.fillStyle = spot;
+  ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+
+  if (catTimer < CAT_FEED) {
+    const munch = Math.floor(catTimer / 6) % 2 === 0;
+    drawCat(player.x + 46, py + 14, 0.85, false, munch);
+    drawBowl(player.x + 22, py + 26);
+    if (catTimer % 7 === 0) {
+      burst(player.x + 28, player.y + 8, 2, ['#8b5a2b', '#c98a4b'], 1.2);
+    }
+    caption('Croquettes pour Nvidia…', munch ? '#d7ff8a' : '#fdf6ef');
+  } else if (catTimer < CAT_FEED + CAT_FLEX) {
+    // He grows sideways out of Alexandre's way rather than through him.
+    const p = (catTimer - CAT_FEED) / CAT_FLEX;
+    const cx = clamp(player.x + 46 + p * 22, 60, VIEW.w - 60);
+    ctx.strokeStyle = `rgba(118,185,0,${0.55 - p * 0.35})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, py + 14, 26 + p * 78, 0, Math.PI * 2);
+    ctx.stroke();
+    drawCat(cx, py + 14 + p * 16, 0.85 + p * 1.25, p > 0.3, false);
+    caption('NVIDIA DEVIENT ÉNORME 💪', '#76b900');
+  } else {
+    // speed lines, then the cat holding him overhead
+    ctx.strokeStyle = 'rgba(215,255,138,.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const sx = (i * 61 + 17) % VIEW.w;
+      const sy = (i * 97 + catTimer * 34) % (VIEW.h + 120) - 60;
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx, sy + 44 + (i % 3) * 22);
+    }
+    ctx.stroke();
+    drawCat(player.x, py + 100, 2.1, true, false);
+    caption('+200 M EN UN SAUT', '#76b900');
+  }
 }
 
 /* Shield ring while the clipper is live; it blinks out over the last second. */
@@ -1061,11 +1376,12 @@ function draw() {
   drawPrincess();
   for (const plat of platforms) drawPlatform(plat);
   for (const bonus of bonuses) drawBonus(bonus);
+  if (state === 'cat') drawCatScene();
   drawParticles();
   for (const nail of nails) drawNail(nail);
   if (state !== 'dead' && state !== 'downed') {
     drawPlayer();
-    drawShield();
+    if (state !== 'cat') drawShield();
   }
   drawToasts();
   drawHud();
@@ -1138,6 +1454,9 @@ function update() {
     buildPlatforms();
     stepBonuses();
     stepNails();
+  } else if (state === 'cat') {
+    stepCat();
+    stepPlatforms();
   } else if (state === 'downed') {
     stepPlatforms();
     if (--downTimer <= 0) respawn();
@@ -1188,7 +1507,11 @@ window.addEventListener('keydown', (event) => {
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(event.code)) event.preventDefault();
   keys.add(event.code);
 
-  if (event.code === 'KeyM') { muted = !muted; return; }
+  if (event.code === 'KeyM') {
+    muted = !muted;
+    if (muted) stopCatSound();
+    return;
+  }
   if (event.code === 'KeyP') {
     if (state === 'play') state = 'pause';
     else if (state === 'pause') state = 'play';
@@ -1208,7 +1531,7 @@ function pointerDir(event) {
 
 canvas.addEventListener('pointerdown', (event) => {
   canvas.focus();
-  if (state === 'downed') return;                  // it respawns on its own
+  if (state === 'downed' || state === 'cat') return;   // both resolve on their own
   if (state !== 'play' && state !== 'pause') { onAction(); return; }
   touchDir = pointerDir(event);
   canvas.setPointerCapture(event.pointerId);

@@ -27,12 +27,25 @@ last life and the run is over.
 
 ### Bonuses
 
+Pickups are deliberately sparse: about 4–5 per full climb, on roughly 9% of
+platforms (never on moving ones — they'd drift out of sync).
+
 | | | |
 | --- | --- | --- |
 | ❤️ | **Heart** | +1 HP — or a spare life if he's already whole |
 | ✂️ | **Coupe-ongles** | 8 s shield: ongles shatter on contact instead of hurting |
-| 🪽 | **Winged foot** | launches him up several platforms at once |
+| 🥫 | **Red Bull** | ça donne des ailes — launches him up several platforms |
 | 🧑‍🦲 | **1UP** | one more Alexandre, up to five |
+| 🐱 | **Nvidia** | the rare one — see below |
+
+### Nvidia
+
+Roughly once every three climbs, Alexandre finds his cat. Everything freezes for
+a ~2.4 s cutscene in three beats: he tips out a bowl of croquettes, Nvidia eats,
+swells to four times the size in a green aura, then hoists him **200 m** up the
+tower on raised paws through a field of speed lines. `assets/nvidia.m4a` plays
+over it; the clip is longer than the scene, so it carries on into the resumed
+climb and only fades if the run ends or you press <kbd>M</kbd>.
 
 **Platforms:** purple = solid · teal = sliding · orange = cracks after one bounce ·
 green = checkpoint · gold = the throne at the summit.
