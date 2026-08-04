@@ -1,53 +1,67 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Alexandre &amp; Sabrina, the Foot Princess</title>
-<meta name="description" content="A vertical platformer: climb to Sabrina the Foot Princess while flying toenails try to stop you.">
+<title>Alexandre &amp; Sabrina, la princesse aux pieds</title>
+<meta name="description" content="Un jeu de plateformes vertical : grimpe jusqu’à Sabrina, la princesse aux pieds, en évitant les ongles volants.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👑</text></svg>">
 <link rel="stylesheet" href="game.css">
 </head>
 <body>
   <div class="stage">
     <canvas id="game" width="480" height="720" tabindex="0"
-            aria-label="Vertical platformer game. Use the left and right arrow keys to climb."></canvas>
+            aria-label="Jeu de plateformes vertical. Utilise les flèches gauche et droite pour grimper."></canvas>
   </div>
 
   <aside class="legend">
-    <h1>Alexandre &amp; Sabrina, the Foot Princess</h1>
+    <h1>Alexandre &amp; Sabrina, la princesse aux pieds</h1>
     <p>
-      Alexandre — bald, bespectacled, hopelessly in love — must climb to the top
-      and save <strong>Sabrina</strong>, the Foot Princess. Flying
-      <strong>ongles</strong> cost him 1&nbsp;HP out of&nbsp;3. Lose all three and
-      you lose a life; he has <strong>3</strong>. There is a single green
-      checkpoint ledge, halfway up at 250&nbsp;m — reach it and that's where he
-      respawns.
+      Alexandre — chauve, à lunettes, éperdument amoureux — doit grimper tout en
+      haut pour sauver <strong>Sabrina</strong>, la princesse aux pieds. Les
+      <strong>ongles</strong> volants lui coûtent 1&nbsp;Red&nbsp;Bull sur&nbsp;3.
+      Les trois perdues, c’est une vie en moins ; il en a <strong>3</strong>. Il y
+      a un seul checkpoint, la passerelle verte à mi-hauteur (250&nbsp;m) : une
+      fois atteinte, c’est là qu’il repart.
     </p>
     <ul>
-      <li><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> — move (he bounces on his own)</li>
-      <li><kbd>M</kbd> — mute · <kbd>R</kbd> — restart · <kbd>P</kbd> — pause</li>
-      <li>On touch: hold the left or right half of the screen</li>
+      <li><kbd>←</kbd> <kbd>→</kbd> ou <kbd>A</kbd> <kbd>D</kbd> — se diriger (il rebondit tout seul)</li>
+      <li><kbd>M</kbd> — muet · <kbd>R</kbd> — recommencer · <kbd>P</kbd> — pause</li>
+      <li>Au doigt : garde appuyé sur la moitié gauche ou droite de l’écran</li>
     </ul>
 
-    <h2>Bonuses</h2>
+    <h2>Les passerelles</h2>
     <dl>
-      <dt>❤️ Heart</dt><dd>+1 HP — or a spare life if he's already whole</dd>
-      <dt>✂️ Coupe-ongles</dt><dd>8 s of clipping: ongles shatter on contact</dd>
-      <dt>🥫 Red Bull</dt><dd>ça donne des ailes — launches him up several platforms</dd>
-      <dt>🧑‍🦲 1UP</dt><dd>one more Alexandre, up to five</dd>
+      <dt>Violette</dt><dd>solide</dd>
+      <dt>Turquoise</dt><dd>elle coulisse de gauche à droite</dd>
+      <dt>Orange</dt><dd>elle se fissure et disparaît après un rebond</dd>
+      <dt>Jaune</dt><dd>trampoline : elle le propulse deux fois plus haut</dd>
+      <dt>Verte</dt><dd>le checkpoint, à 250 m</dd>
+      <dt>Dorée</dt><dd>le trône de Sabrina, tout en haut</dd>
+    </dl>
+
+    <h2>Les bonus</h2>
+    <dl>
+      <dt>🥫 Red Bull</dt><dd>+1 Red Bull — ou une vie s’il est déjà au max</dd>
+      <dt>✂️ Coupe-ongles</dt><dd>8 s de bouclier : les ongles éclatent au contact</dd>
+      <dt>🧑‍🦲 Vie</dt><dd>un Alexandre de plus, jusqu’à cinq</dd>
       <dt>🐱 Nvidia</dt><dd>
-        rare. His cat turns up, eats its croquettes, becomes enormous and
-        carries him <strong>200 m</strong> up — with a soundtrack
+        rare. Son chat débarque, mange ses croquettes, devient énorme et le
+        porte <strong>200 m</strong> plus haut — avec bande-son
       </dd>
-      <dt>🛍️ Uber Eats</dt><dd>a code, then a random meal:</dd>
+      <dt>🧴 Crème</dt><dd>
+        très rare. Le crâne devient si luisant qu’il fend le monde : l’écran se
+        fracture, le thème bascule dans la transcendance, des passerelles
+        intermédiaires apparaissent, et il perd ses lunettes
+      </dd>
+      <dt>🛍️ Uber Eats</dt><dd>un code : la roue tourne et sert un plat au hasard</dd>
     </dl>
     <dl class="meals">
-      <dt>🍛 Indien</dt><dd>3,5 s de propulsion — il pète, ça monte</dd>
-      <dt>🍜 Nouilles</dt><dd>3 grappins : clique une passerelle, il s'y tracte</dd>
-      <dt>🍕 Pizza</dt><dd>7 s de planeur : le carton ralentit la chute</dd>
+      <dt>🍛 Indien</dt><dd>3,4 s de propulsion — il pète, ça monte</dd>
+      <dt>🍜 Nouilles</dt><dd>3 grappins : clique une passerelle, il s’y tracte</dd>
+      <dt>🍟 Frites</dt><dd>il mange salement et en perd la moitié : chaque frite détruit un ongle</dd>
     </dl>
-    <p class="back"><a href="./">← back to the feet</a></p>
+    <p class="back"><a href="./">← retour aux pieds</a></p>
   </aside>
 
   <script src="game.js"></script>

@@ -7,8 +7,9 @@ Two pages, no build step, no dependencies.
 
 ## Alexandre & Sabrina, the Foot Princess
 
-A vertical platformer. Alexandre — bald, bespectacled — climbs 500 m to save
-**Sabrina**, the Foot Princess. Flying **ongles** cost him 1 HP out of 3.
+A vertical platformer, **in French**. Alexandre — bald, bespectacled — climbs
+500 m to save **Sabrina**, the Foot Princess. Flying **ongles** cost him one of
+his three Red Bulls (the HP bar is a row of cans).
 
 | Control | |
 | --- | --- |
@@ -35,22 +36,33 @@ platforms (never on moving ones — they'd drift out of sync).
 
 | | | |
 | --- | --- | --- |
-| ❤️ | **Heart** | +1 HP — or a spare life if he's already whole |
 | ✂️ | **Coupe-ongles** | 8 s shield: ongles shatter on contact instead of hurting |
-| 🥫 | **Red Bull** | ça donne des ailes — launches him up several platforms |
+| 🥫 | **Red Bull** | +1 HP — or a spare life if he's already full |
 | 🧑‍🦲 | **1UP** | one more Alexandre, up to five |
+| 🧴 | **Crème pour le crâne** | the rarest — see below |
 | 🛍️ | **Uber Eats** | a code redeemed for one of three random meals — see below |
 | 🐱 | **Nvidia** | the rare one — see below |
 
 ### Uber Eats
 
-The code picks one dish at random, each with its own power:
+Collecting the code freezes the game for a slot-machine spin: a reel of dishes
+decelerates and stops exactly on the one drawn, lever and blinking bulbs
+included, then serves it.
 
 | | | |
 | --- | --- | --- |
 | 🍛 | **Indien** | 3.4 s of curry propulsion — he farts, and it lifts him at a steady climb, olive plume included |
 | 🍜 | **Nouilles** | 3 grapples: click or tap a ledge and a noodle reels him to it, Spider-Man style. Anchors track moving ledges; a tap away from any ledge still steers |
-| 🍕 | **Pizza** | 7 s of glider — the box goes overhead and caps his fall at 2.2 px/frame instead of 17 |
+| 🍟 | **Frites** | 4.5 s of eating badly: fries spray out ahead of him, and each one destroys an ongle on contact, destroying itself too |
+
+### Crème pour le crâne
+
+The rarest pickup (~0.35% of eligible platforms). His scalp turns so shiny it
+splits the world: the screen fractures along nine frozen crack lines, the theme
+flips to a cream-and-lavender transcendence with rays turning around his skull,
+**intermediate ledges** appear wherever a gap exceeds 78 px, and he loses his
+glasses for glowing white eyes. Twelve seconds later the cracks heal, the ghost
+ledges evaporate and the tower goes back to normal.
 
 ### Nvidia
 
@@ -61,8 +73,12 @@ tower on raised paws through a field of speed lines. `assets/nvidia.m4a` plays
 over it; the clip is longer than the scene, so it carries on into the resumed
 climb and only fades if the run ends or you press <kbd>M</kbd>.
 
-**Platforms:** purple = solid · teal = sliding · orange = cracks after one bounce ·
-green = the single checkpoint at 250 m · gold = the throne at the summit.
+**Platforms:** purple = solid · teal = sliding · orange = cracks after one
+bounce · **yellow = trampoline, launching him twice as high** · green = the
+single checkpoint at 250 m · gold = the throne at the summit · translucent white
+= transcendence-only intermediate ledges.
+
+**Language:** the app is entirely in French; this README is the English dev doc.
 
 **Under the hood:** one tall world column where `y` grows downward, so climbing is
 negative. Platforms are generated procedurally ahead of the camera and culled

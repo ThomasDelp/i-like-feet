@@ -18,7 +18,7 @@ const INVULN = 112;           // frames of mercy after an ongle connects
 const START_LIVES = 3;
 const MAX_LIVES = 5;
 const CLIPPER_TIME = 8 * 60;  // how long a nail clipper keeps ongles off him
-const BOOST_VY = -20.5;       // Red Bull launch, ~2.5 platforms in one go
+const SPRING_VY = -20.5;      // trampoline launch, ~2.5 platforms in one go
 const MID_REST = -GOAL / 2;   // the one and only checkpoint, halfway up
 const DOWN_TIME = 78;         // frames of the "he's down" beat before respawning
 
@@ -29,29 +29,36 @@ const CAT_RIDE = 66;
 const CAT_TOTAL = CAT_FEED + CAT_FLEX + CAT_RIDE;
 const CAT_LIFT = 2000;        // 200 m in Nvidia's paws
 
-// Uber Eats roulette: one code, one random meal, one power.
-const JET_TIME = 3.4 * 60;    // curry propulsion
-const JET_MAX = -9;           // terminal climb rate under fart power
-const GLIDE_TIME = 7 * 60;    // pizza-box glider
-const GLIDE_FALL = 2.2;       // capped descent while gliding
-const NOODLE_USES = 3;        // spider-noodle grapples
+// Uber Eats : une machine à sous, un plat, un pouvoir.
+const WHEEL_SPIN = 80;        // frames de rotation de la roue
+const WHEEL_HOLD = 30;        // frames d'arrêt sur le résultat
+const JET_TIME = 3.4 * 60;    // propulsion au curry
+const JET_MAX = -9;           // vitesse de montée maximale au pet
+const NOODLE_USES = 3;        // grappins nouille
 const GRAPPLE_FRAMES = 14;
-const NOODLE_RANGE = 78;      // how close a tap must land to a platform
+const NOODLE_RANGE = 78;      // distance max entre le clic et une passerelle
+const FRIES_TIME = 4.5 * 60;  // durée pendant laquelle il perd ses frites
+const FRY_EVERY = 9;          // frames entre deux frites éjectées
 
-const MEALS = ['indien', 'nouilles', 'pizza'];
+// La crème pour le crâne : brèche dans le monde, thème de transcendance.
+const TRANS_TIME = 12 * 60;
+const GHOST_GAP = 78;         // au-delà, une passerelle intermédiaire apparaît
+const CRACK_GROW = 40;        // frames d'apparition de la fracture
+
+const MEALS = ['indien', 'nouilles', 'frites'];
 const MEAL = {
-  indien:   { label: '🍛 INDIEN — PROPULSION!',   spark: '#9ab53a' },
-  nouilles: { label: '🍜 NOUILLES — SPIDER-ALEX!', spark: '#ffd166' },
-  pizza:    { label: '🍕 PIZZA — PLANEUR!',        spark: '#ff8f5a' },
+  indien:   { label: '🍛 INDIEN — PROPULSION !',    spark: '#9ab53a' },
+  nouilles: { label: '🍜 NOUILLES — SPIDER-ALEX !', spark: '#ffd166' },
+  frites:   { label: '🍟 FRITES — ÇA GICLE !',      spark: '#ffd93b' },
 };
 
 const BONUS = {
-  heart:   { label: '+1 HP',              spark: '#ff6f91', glow: 'rgba(255,111,145,.4)' },
-  life:    { label: '1 UP',               spark: '#ffd166', glow: 'rgba(255,209,102,.4)' },
-  clipper: { label: 'COUPE-ONGLES!',      spark: '#8bd7ff', glow: 'rgba(139,215,255,.4)' },
-  boost:   { label: 'ÇA DONNE DES AILES!', spark: '#ffd166', glow: 'rgba(255,209,102,.4)' },
-  cat:     { label: 'NVIDIA!',            spark: '#76b900', glow: 'rgba(118,185,0,.45)' },
-  uber:    { label: 'UBER EATS!',         spark: '#06c167', glow: 'rgba(6,193,103,.42)' },
+  heart:   { label: '+1 RED BULL',      spark: '#ffd166', glow: 'rgba(255,209,102,.42)' },
+  life:    { label: '1 VIE EN PLUS',    spark: '#ff6f91', glow: 'rgba(255,111,145,.4)' },
+  clipper: { label: 'COUPE-ONGLES !',   spark: '#8bd7ff', glow: 'rgba(139,215,255,.4)' },
+  cat:     { label: 'NVIDIA !',         spark: '#76b900', glow: 'rgba(118,185,0,.45)' },
+  uber:    { label: 'UBER EATS !',      spark: '#06c167', glow: 'rgba(6,193,103,.42)' },
+  creme:   { label: 'CRÈME MIRACLE !',  spark: '#fff3c4', glow: 'rgba(255,246,205,.5)' },
 };
 
 const canvas = document.getElementById('game');
@@ -125,6 +132,9 @@ const sfx = {
   pickup: () => { beep(660, 0.08, 'triangle', 0.06); setTimeout(() => beep(880, 0.1, 'triangle', 0.05), 70); },
   oneup: () => [784, 988, 1319].forEach((f, i) => setTimeout(() => beep(f, 0.13, 'triangle', 0.06), i * 90)),
   boost: () => { beep(300, 0.2, 'sawtooth', 0.05); setTimeout(() => beep(720, 0.18, 'triangle', 0.05), 90); },
+  crunch: () => beep(rand(190, 250), 0.05, 'square', 0.03),
+  tick: () => beep(1200, 0.03, 'square', 0.03),
+  transcend: () => [523, 784, 1047, 1319, 1568].forEach((f, i) => setTimeout(() => beep(f, 0.5, 'triangle', 0.05), i * 110)),
   clip: () => beep(1500, 0.05, 'square', 0.045),
   check: () => { beep(523, 0.1, 'triangle', 0.06); setTimeout(() => beep(784, 0.16, 'triangle', 0.06), 90); },
   fart: () => [0, 90, 165].forEach((d, i) => setTimeout(() => beep(rand(58, 104) - i * 6, 0.14, 'sawtooth', 0.055), d)),
@@ -150,6 +160,7 @@ let player, platforms, nails, bonuses, toasts, particles, backFeet;
 let camY, groundY, goalY, best, shake, frames, nailTimer, endTimer;
 let lives, checkpoint, restPlaced, downTimer, deathReason;
 let catTimer, catFrom, catTarget;
+let fries, wheelTimer, wheelPick, wheelStep, cracks, crackT;
 
 function reset() {
   groundY = 0;
@@ -162,7 +173,7 @@ function reset() {
     vx: 0, vy: 0,
     face: 1, hp: MAX_HP, invuln: 0, clipper: 0,
     squash: 0, blink: 0, peak: 0,
-    jet: 0, glide: 0, noodles: 0, grapple: null,
+    jet: 0, fries: 0, noodles: 0, grapple: null, trans: 0,
   };
 
   lives = START_LIVES;
@@ -180,6 +191,12 @@ function reset() {
   bonuses = [];
   toasts = [];
   particles = [];
+  fries = [];
+  wheelTimer = 0;
+  wheelPick = null;
+  wheelStep = -1;
+  cracks = [];
+  crackT = 0;
   shake = 0;
   frames = 0;
   nailTimer = 140;
@@ -234,6 +251,7 @@ function buildPlatforms() {
       const roll = Math.random();
       if (climbed > 900 && roll < 0.16 + t * 0.12) type = 'moving';
       else if (climbed > 1800 && roll < 0.32 + t * 0.14) type = 'fragile';
+      else if (climbed > 400 && roll < 0.46) type = 'spring';   // trampoline
     }
 
     const plat = {
@@ -261,12 +279,12 @@ function maybeBonus(plat, climbed) {
   if (plat.type === 'rest') {
     if (roll < 0.25) kind = 'heart';
     else if (roll < 0.35) kind = 'clipper';
-  } else if (roll < 0.018) kind = 'boost';
-  else if (roll < 0.034) kind = 'clipper';
-  else if (roll < 0.052) kind = 'heart';
-  else if (roll < 0.070) kind = 'uber';
-  else if (roll < 0.084 && climbed > 600) kind = 'cat';
-  else if (roll < 0.090 && climbed > 1200) kind = 'life';
+  } else if (roll < 0.018) kind = 'clipper';
+  else if (roll < 0.038) kind = 'heart';
+  else if (roll < 0.056) kind = 'uber';
+  else if (roll < 0.068 && climbed > 600) kind = 'cat';
+  else if (roll < 0.074 && climbed > 1200) kind = 'life';
+  else if (roll < 0.0775 && climbed > 1000) kind = 'creme';   // très rare
 
   if (!kind) return;
   bonuses.push({
@@ -285,6 +303,7 @@ function stepPlatforms() {
       plat.phase += plat.rate;
       plat.x = clamp(plat.home + Math.sin(plat.phase) * plat.range, 4, VIEW.w - plat.w - 4);
     }
+    if (plat.press > 0) plat.press--;
     if (plat.cracking > 0 && --plat.cracking === 0) plat.dead = true;
   }
   // Drop everything that has scrolled well below the view.
@@ -311,33 +330,27 @@ function collect(b) {
       player.hp += 1;
       sfx.pickup();
     } else if (lives < MAX_LIVES) {
-      // A spare heart with nothing to heal becomes a spare life.
+      // Une canette de trop se transforme en vie.
       lives += 1;
-      label = '+1 LIFE';
+      label = '+1 VIE';
       sfx.oneup();
     } else {
-      label = 'ALREADY PERFECT';
+      label = 'DÉJÀ AU MAX';
       sfx.pickup();
     }
   } else if (b.kind === 'life') {
     lives = Math.min(MAX_LIVES, lives + 1);
-    if (lives === MAX_LIVES) label = 'MAX LIVES';
+    if (lives === MAX_LIVES) label = 'VIES AU MAX';
     sfx.oneup();
   } else if (b.kind === 'clipper') {
     player.clipper = CLIPPER_TIME;
     sfx.pickup();
-  } else if (b.kind === 'boost') {
-    player.vy = BOOST_VY;
-    player.squash = 9;
-    sfx.boost();
   } else if (b.kind === 'cat') {
     startCat();
+  } else if (b.kind === 'creme') {
+    startTranscend();
   } else if (b.kind === 'uber') {
-    const meal = pick(MEALS);
-    serveMeal(meal);
-    toast('UBER EATS', b.x, b.y - 40, '#06c167');
-    label = MEAL[meal].label;
-    spark = MEAL[meal].spark;
+    startWheel();
   }
 
   burst(b.x, b.y, 13, ['#fdf6ef', spark], 3.2);
@@ -356,9 +369,162 @@ function serveMeal(meal) {
     player.noodles = NOODLE_USES;
     sfx.noodle();
   } else {
-    player.glide = GLIDE_TIME;
-    sfx.pickup();
+    player.fries = FRIES_TIME;
+    sfx.crunch();
   }
+  toast(MEAL[meal].label, player.x, player.y - 46, MEAL[meal].spark);
+}
+
+/* Les frites : il mange salement et en perd la moitié vers l'avant. Une frite
+   qui touche un ongle le détruit et se détruit avec. */
+
+function ejectFry() {
+  fries.push({
+    x: player.x + player.face * 9,
+    y: player.y - 4,
+    vx: player.face * rand(3.6, 5.8) + player.vx * 0.3,
+    vy: rand(-2.8, 0.4),
+    rot: rand(0, Math.PI * 2),
+    spin: rand(-0.3, 0.3),
+    age: 0,
+  });
+  if (fries.length % 2 === 0) sfx.crunch();
+}
+
+function stepFries() {
+  for (const fry of fries) {
+    fry.x += fry.vx;
+    fry.y += fry.vy;
+    fry.vy += 0.09;
+    fry.rot += fry.spin;
+    fry.age++;
+    if (fry.gone) continue;
+    for (const nail of nails) {
+      if (nail.gone) continue;
+      if (Math.hypot(nail.x - fry.x, nail.y - fry.y) < nail.r + 7) {
+        nail.gone = true;
+        fry.gone = true;
+        burst(fry.x, fry.y, 8, ['#ffd93b', '#fff3c4', '#e0a091'], 2.6);
+        sfx.clip();
+        break;
+      }
+    }
+  }
+  fries = fries.filter((f) => !f.gone && f.age < 170
+    && f.x > -40 && f.x < VIEW.w + 40 && f.y < camY + VIEW.h + 80);
+}
+
+/* --------------------------------------------------------- la machine à sous
+
+   Le code Uber Eats fait tourner une roue qui ralentit et s'arrête sur le plat
+   tiré au sort, puis le sert. */
+
+function startWheel() {
+  state = 'wheel';
+  wheelTimer = 0;
+  wheelPick = pick(MEALS);
+  wheelStep = -1;
+  player.vy = 0;
+  player.grapple = null;
+}
+
+/* Position continue de la roue, en nombre d'items, qui décélère et tombe
+   pile sur l'index tiré. */
+function wheelPos() {
+  const p = clamp(wheelTimer / WHEEL_SPIN, 0, 1);
+  const eased = 1 - Math.pow(1 - p, 3);
+  const target = MEALS.indexOf(wheelPick);
+  return eased * (MEALS.length * 6 + target);
+}
+
+function stepWheel() {
+  wheelTimer++;
+
+  const step = Math.floor(wheelPos());
+  if (step !== wheelStep) {
+    wheelStep = step;
+    if (wheelTimer < WHEEL_SPIN) sfx.tick();
+  }
+
+  if (wheelTimer === WHEEL_SPIN) {
+    sfx.oneup();
+    shake = 10;
+    burst(VIEW.w / 2, camY + VIEW.h / 2, 18, ['#06c167', '#fdf6ef', '#ffd166'], 4);
+  }
+
+  if (wheelTimer >= WHEEL_SPIN + WHEEL_HOLD) {
+    state = 'play';
+    serveMeal(wheelPick);
+  }
+}
+
+/* ------------------------------------------------------------ transcendance
+
+   Le crâne devient si luisant qu'il fend le monde : l'écran se fracture, le
+   thème bascule, et des passerelles intermédiaires apparaissent. */
+
+function startTranscend() {
+  player.trans = TRANS_TIME;
+  crackT = 0;
+  shake = 22;
+  sfx.transcend();
+  burst(player.x, player.y - 12, 26, ['#fff6cd', '#ffffff', '#ffe9a0'], 5);
+
+  // Géométrie de la fracture, figée une fois pour toutes pour ne pas frétiller.
+  cracks = [];
+  const cx = player.x;
+  const cy = player.y - camY - 12;
+  for (let i = 0; i < 9; i++) {
+    const line = [{ x: cx, y: cy }];
+    let a = (i / 9) * Math.PI * 2 + rand(-0.2, 0.2);
+    let x = cx;
+    let y = cy;
+    for (let seg = 0; seg < 5; seg++) {
+      a += rand(-0.5, 0.5);
+      const len = rand(50, 130);
+      x += Math.cos(a) * len;
+      y += Math.sin(a) * len;
+      line.push({ x, y });
+    }
+    cracks.push(line);
+  }
+
+  ensureGhosts();
+  toast('TRANSCENDANCE', player.x, player.y - 54, '#fff6cd');
+}
+
+/* Comble chaque trou trop grand par une passerelle intermédiaire. Idempotent :
+   une fois posée, les deux moitiés sont sous le seuil. */
+function ensureGhosts() {
+  const sorted = [...platforms].sort((a, b) => b.y - a.y);
+  const added = [];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const below = sorted[i];
+    const above = sorted[i + 1];
+    const gap = below.y - above.y;
+    if (gap <= GHOST_GAP) continue;
+    const w = 86;
+    const mid = (below.x + below.w / 2 + above.x + above.w / 2) / 2;
+    added.push({
+      x: clamp(mid - w / 2 + rand(-26, 26), 6, VIEW.w - w - 6),
+      y: below.y - gap / 2,
+      w,
+      type: 'ghost',
+      dead: false,
+    });
+  }
+  platforms.push(...added);
+}
+
+function endTranscend() {
+  for (const plat of platforms) {
+    if (plat.type === 'ghost') {
+      plat.dead = true;
+      burst(plat.x + plat.w / 2, plat.y, 4, ['#fff6cd', '#ffffff'], 2);
+    }
+  }
+  cracks = [];
+  toast('…retour au monde', player.x, player.y - 40, '#c7b6a8');
 }
 
 /* Spider-Alex: tap a platform and a noodle reels him in. Moving platforms are
@@ -548,6 +714,7 @@ function clip(nail) {
 }
 
 function hurt(nail) {
+  if (state !== 'play') return;
   nail.gone = true;
   player.hp -= 1;
   player.invuln = INVULN;
@@ -559,13 +726,15 @@ function hurt(nail) {
 
 /* One life gone. If any remain he drops back to his last checkpoint. */
 function downed(reason) {
+  if (state !== 'play') return;
   lives -= 1;
   deathReason = reason;
   player.hp = 0;
   player.clipper = 0;
   player.jet = 0;
-  player.glide = 0;
+  player.fries = 0;
   player.noodles = 0;
+  player.trans = 0;
   player.grapple = null;
   shake = 18;
   burst(player.x, player.y, 20, ['#ffd9c9', '#ff8fa3', '#fdf6ef'], 4.2);
@@ -601,7 +770,7 @@ function respawn() {
 
   camY = checkpoint.y - VIEW.h * 0.55;
   buildPlatforms();
-  toast('GO AGAIN', player.x, player.y - 46, '#8bffc8');
+  toast('ON REPART !', player.x, player.y - 46, '#8bffc8');
   state = 'play';
 }
 
@@ -657,9 +826,8 @@ function stepPlayer() {
   const prevBottom = player.y + player.h / 2;
   player.vy = Math.min(player.vy + GRAVITY, 17);
 
-  // Curry propulsion beats gravity; a pizza box only slows the fall.
+  // La propulsion au curry bat la gravité.
   if (player.jet > 0) player.vy = Math.max(player.vy - 1.15, JET_MAX);
-  else if (player.glide > 0 && player.vy > 0) player.vy = Math.min(player.vy, GLIDE_FALL);
 
   player.y += player.vy;
   const bottom = player.y + player.h / 2;
@@ -678,7 +846,15 @@ function stepPlayer() {
 
   if (player.invuln > 0) player.invuln--;
   if (player.clipper > 0) player.clipper--;
-  if (player.glide > 0) player.glide--;
+  if (player.fries > 0) {
+    player.fries--;
+    if (player.fries % FRY_EVERY === 0) ejectFry();
+  }
+  if (player.trans > 0) {
+    crackT++;
+    if (--player.trans === 0) endTranscend();
+    else if (player.trans % 6 === 0) ensureGhosts();
+  }
   if (player.jet > 0) {
     player.jet--;
     if (player.jet % 2 === 0) {
@@ -712,9 +888,15 @@ function land(plat) {
     plat.cracking = 10;
     sfx.crack();
   }
+  if (plat.type === 'spring') {
+    player.vy = SPRING_VY;
+    plat.press = 12;
+    burst(player.x, plat.y, 9, ['#ffd166', '#fff0c2', '#ffb27a'], 3);
+    sfx.boost();
+  }
   if (plat.type === 'rest' && plat.y < checkpoint.y) {
     checkpoint = { x: plat.x, y: plat.y, w: plat.w, type: 'rest' };
-    toast('CHECKPOINT', player.x, plat.y - 34, '#8bffc8');
+    toast('CHECKPOINT !', player.x, plat.y - 34, '#8bffc8');
     sfx.check();
   }
   if (plat.type === 'throne') win();
@@ -755,11 +937,38 @@ function saveBest() {
 
 function drawBackground() {
   const grad = ctx.createLinearGradient(0, 0, 0, VIEW.h);
-  const t = clamp((groundY - camY) / GOAL, 0, 1);       // sky lightens as he climbs
-  grad.addColorStop(0, `hsl(${272 - t * 30}, 45%, ${9 + t * 16}%)`);
-  grad.addColorStop(1, `hsl(${318 - t * 26}, 38%, ${16 + t * 20}%)`);
+  const t = clamp((groundY - camY) / GOAL, 0, 1);       // le ciel s'éclaircit en montant
+  const trans = player.trans > 0;
+
+  if (trans) {
+    const fade = player.trans < 60 ? player.trans / 60 : 1;
+    grad.addColorStop(0, `hsl(48, ${60 * fade}%, ${86 - (1 - fade) * 60}%)`);
+    grad.addColorStop(1, `hsl(268, ${45 * fade}%, ${62 - (1 - fade) * 40}%)`);
+  } else {
+    grad.addColorStop(0, `hsl(${272 - t * 30}, 45%, ${9 + t * 16}%)`);
+    grad.addColorStop(1, `hsl(${318 - t * 26}, 38%, ${16 + t * 20}%)`);
+  }
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+
+  if (trans) {
+    // rayons qui tournent lentement autour du crâne
+    const cx = player.x;
+    const cy = player.y - camY;
+    ctx.save();
+    ctx.globalAlpha = 0.16 * (player.trans < 60 ? player.trans / 60 : 1);
+    ctx.fillStyle = '#fff6cd';
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + frames * 0.004;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a - 0.05) * 900, cy + Math.sin(a - 0.05) * 900);
+      ctx.lineTo(cx + Math.cos(a + 0.05) * 900, cy + Math.sin(a + 0.05) * 900);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 
   // Parallax feet, drifting and wrapping over a two-screen band.
   const band = VIEW.h * 2;
@@ -768,7 +977,7 @@ function drawBackground() {
     let sy = foot.y - camY * 0.3;
     sy = ((sy % band) + band) % band - VIEW.h * 0.5;
     ctx.save();
-    ctx.globalAlpha = foot.alpha;
+    ctx.globalAlpha = player.trans > 0 ? Math.min(0.5, foot.alpha * 2.4) : foot.alpha;
     ctx.translate(foot.x, sy);
     ctx.rotate(foot.rot);
     ctx.font = `${foot.size}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
@@ -791,15 +1000,62 @@ function drawPlatform(plat) {
   if (plat.type === 'fragile') { top = '#f3a26d'; side = '#a55b2c'; }
   if (plat.type === 'ground') { top = '#7d5aa8'; side = '#3c2a5c'; }
   if (plat.type === 'rest') { top = '#7ee0a8'; side = '#2f7d55'; }
+  if (plat.type === 'spring') { top = '#ffe066'; side = '#b8871a'; }
   if (plat.type === 'throne') { top = '#ffd166'; side = '#c98f22'; }
   if (plat.cracking) { top = '#ff8f6b'; side = '#8c3d20'; }
 
+  // Les passerelles intermédiaires de la transcendance : lumineuses, translucides.
+  if (plat.type === 'ghost') {
+    const pulse = 0.4 + Math.sin(frames * 0.08 + plat.x) * 0.12;
+    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+    roundRect(plat.x, y, plat.w, h - 5, 5);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,240,190,.75)';
+    ctx.lineWidth = 1.4;
+    roundRect(plat.x, y, plat.w, h - 5, 5);
+    ctx.stroke();
+    return;
+  }
+
+  // Sous transcendance, tout le décor blanchit.
+  if (player.trans > 0) {
+    top = '#fff6d8';
+    side = 'rgba(216,201,160,.85)';
+    if (plat.type === 'spring') { top = '#ffe8a0'; side = 'rgba(200,170,90,.9)'; }
+    if (plat.type === 'rest') { top = '#e6fff2'; side = 'rgba(150,210,180,.9)'; }
+  }
+
+  const squash = plat.press > 0 ? plat.press / 12 : 0;
+  const dy = squash * 4;
+
   ctx.fillStyle = side;
-  roundRect(plat.x, y, plat.w, h, 6);
+  roundRect(plat.x, y + dy, plat.w, h - dy, 6);
   ctx.fill();
   ctx.fillStyle = top;
-  roundRect(plat.x, y, plat.w, h - 4, 6);
+  roundRect(plat.x, y + dy, plat.w, h - 4 - dy, 6);
   ctx.fill();
+
+  if (plat.type === 'spring') {
+    // ressort en zigzag, comprimé au rebond
+    ctx.strokeStyle = 'rgba(120,80,10,.55)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const zig = 5;
+    for (let i = 0; i <= zig; i++) {
+      const x = plat.x + 8 + (i * (plat.w - 16)) / zig;
+      const yy = y + dy + (i % 2 === 0 ? 2 : h - 6 - dy);
+      if (i === 0) ctx.moveTo(x, yy);
+      else ctx.lineTo(x, yy);
+    }
+    ctx.stroke();
+    if (squash > 0) {
+      ctx.strokeStyle = `rgba(255,224,102,${squash * 0.7})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(plat.x + plat.w / 2, y, 20 + (1 - squash) * 30, Math.PI, 0);
+      ctx.stroke();
+    }
+  }
 
   if (plat.type === 'rest') {
     // little flag, so a checkpoint is obvious from a screen away
@@ -898,7 +1154,8 @@ function drawBonus(b) {
   ctx.fill();
 
   if (b.kind === 'heart') {
-    drawHeart(0, 2, 10, true);
+    ctx.rotate(Math.sin(b.bob * 0.6) * 0.16);
+    drawCan(false);
   } else if (b.kind === 'life') {
     drawFaceIcon(0, 0, 9);
     ctx.strokeStyle = '#ffd166';
@@ -924,45 +1181,27 @@ function drawBonus(b) {
     ctx.moveTo(-5, 7); ctx.lineTo(0, 12); ctx.lineTo(5, 7);
     ctx.closePath();
     ctx.fill();
-  } else if (b.kind === 'boost') {
-    // energy drink: silver can, blue wedges, gold sun, two charging bulls
-    ctx.rotate(Math.sin(b.bob * 0.6) * 0.16);
-    const body = ctx.createLinearGradient(-7, 0, 7, 0);
-    body.addColorStop(0, '#8e97a8');
-    body.addColorStop(0.4, '#f2f5fa');
-    body.addColorStop(1, '#98a2b3');
-    ctx.fillStyle = body;
-    roundRect(-6.5, -11, 13, 22, 3);
-    ctx.fill();
-
-    ctx.save();
-    roundRect(-6.5, -11, 13, 22, 3);
-    ctx.clip();
-    ctx.fillStyle = '#20418f';
-    ctx.beginPath();
-    ctx.moveTo(-8, 3); ctx.lineTo(2, -13); ctx.lineTo(8, -13); ctx.lineTo(-8, 11);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(-8, 15); ctx.lineTo(7, -2); ctx.lineTo(9, 5); ctx.lineTo(-2, 15);
-    ctx.closePath();
+  } else if (b.kind === 'creme') {
+    // pot de crème pour le crâne, couvercle doré et éclat
+    ctx.rotate(Math.sin(b.bob * 0.4) * 0.1);
+    ctx.fillStyle = '#f4ecff';
+    roundRect(-8, -5, 16, 14, 3);
     ctx.fill();
     ctx.fillStyle = '#ffd166';
+    roundRect(-9, -9, 18, 5, 2);
+    ctx.fill();
+    ctx.fillStyle = '#e6d6ff';
+    roundRect(-5.5, -1, 11, 5, 1.5);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,255,255,${0.5 + Math.sin(b.bob * 2) * 0.3})`;
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.arc(0, 0, 4.4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#c62828';
-    for (const dir of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(dir * 0.8, -2.6); ctx.lineTo(dir * 5.4, -0.5); ctx.lineTo(dir * 0.8, 2.3);
-      ctx.closePath();
-      ctx.fill();
+    for (const a of [0, 1, 2, 3]) {
+      const ang = (a / 4) * Math.PI * 2 + b.bob * 0.5;
+      ctx.moveTo(Math.cos(ang) * 12, Math.sin(ang) * 12 - 2);
+      ctx.lineTo(Math.cos(ang) * 17, Math.sin(ang) * 17 - 2);
     }
-    ctx.restore();
-
-    ctx.fillStyle = '#cfd6e2';
-    roundRect(-5, -12.5, 10, 3, 1.5);
-    ctx.fill();
+    ctx.stroke();
   } else if (b.kind === 'cat') {
     drawCat(0, 6, 0.62, false, false);
   } else if (b.kind === 'uber') {
@@ -1326,43 +1565,67 @@ function drawPlayer() {
   ctx.arc(11, -11, 2.6, 0, Math.PI * 2);
   ctx.fill();
 
-  // pizza box, held overhead as a glider
-  if (player.glide > 0) {
-    ctx.fillStyle = '#c98a4b';
-    roundRect(-17, -36, 34, 9, 2);
-    ctx.fill();
-    ctx.fillStyle = '#e2ac74';
-    roundRect(-17, -36, 34, 3.5, 1.5);
-    ctx.fill();
+  // cornet de frites, tenu bien serré
+  if (player.fries > 0) {
     ctx.fillStyle = '#c62828';
-    ctx.fillRect(-5, -36, 10, 9);
-    ctx.strokeStyle = '#f0c49b';
-    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.moveTo(-11, -27); ctx.lineTo(-8, -18);
-    ctx.moveTo(11, -27); ctx.lineTo(8, -18);
-    ctx.stroke();
+    ctx.moveTo(11, -4); ctx.lineTo(21, -4); ctx.lineTo(19, 8); ctx.lineTo(13, 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffe680';
+    for (const dx of [12.5, 15.5, 18.5]) {
+      ctx.save();
+      ctx.translate(dx, -8);
+      roundRect(-1.3, -4, 2.6, 8, 1.2);
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
-  // glasses
-  ctx.strokeStyle = '#241c33';
-  ctx.lineWidth = 1.8;
-  ctx.fillStyle = 'rgba(220,240,255,.55)';
-  ctx.beginPath(); ctx.arc(-4.4, -12, 4.1, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.arc(4.4, -12, 4.1, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(-0.3, -12); ctx.lineTo(0.3, -12);
-  ctx.moveTo(-8.5, -13); ctx.lineTo(-11, -14);
-  ctx.moveTo(8.5, -13); ctx.lineTo(11, -14);
-  ctx.stroke();
+  if (player.trans > 0) {
+    // Le crâne transcende : halo, pas de lunettes, yeux blancs incandescents.
+    const halo = ctx.createRadialGradient(0, -14, 2, 0, -14, 30);
+    halo.addColorStop(0, 'rgba(255,250,220,.75)');
+    halo.addColorStop(1, 'rgba(255,246,205,0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(0, -14, 30, 0, Math.PI * 2);
+    ctx.fill();
 
-  // eyes + a hopeful little smile
-  ctx.fillStyle = '#241c33';
-  const eyeH = player.blink < 6 ? 0.6 : 1.7;
-  ctx.beginPath();
-  ctx.ellipse(-4.4, -12, 1.5, eyeH, 0, 0, Math.PI * 2);
-  ctx.ellipse(4.4, -12, 1.5, eyeH, 0, 0, Math.PI * 2);
-  ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(-4.4, -12, 2.6, 3.1, 0, 0, Math.PI * 2);
+    ctx.ellipse(4.4, -12, 2.6, 3.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,255,255,${0.5 + Math.sin(frames * 0.15) * 0.3})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(-4.4, -12, 4.4, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(4.4, -12, 4.4, 5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    // lunettes
+    ctx.strokeStyle = '#241c33';
+    ctx.lineWidth = 1.8;
+    ctx.fillStyle = 'rgba(220,240,255,.55)';
+    ctx.beginPath(); ctx.arc(-4.4, -12, 4.1, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(4.4, -12, 4.1, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-0.3, -12); ctx.lineTo(0.3, -12);
+    ctx.moveTo(-8.5, -13); ctx.lineTo(-11, -14);
+    ctx.moveTo(8.5, -13); ctx.lineTo(11, -14);
+    ctx.stroke();
+
+    // yeux
+    ctx.fillStyle = '#241c33';
+    const eyeH = player.blink < 6 ? 0.6 : 1.7;
+    ctx.beginPath();
+    ctx.ellipse(-4.4, -12, 1.5, eyeH, 0, 0, Math.PI * 2);
+    ctx.ellipse(4.4, -12, 1.5, eyeH, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // petit sourire d'espoir
   ctx.strokeStyle = '#8a5a45';
   ctx.lineWidth = 1.4;
   ctx.beginPath();
@@ -1460,27 +1723,37 @@ function drawPrincess() {
 function drawHud() {
   const climbed = height();
   const total = Math.floor(GOAL / 10);
+  // Sous transcendance le ciel devient crème : l'encre du HUD passe au sombre.
+  const ink = player.trans > 0 ? '#3f2d10' : '#fdf6ef';
+  const inkDim = player.trans > 0 ? 'rgba(63,45,16,.72)' : 'rgba(253,246,239,.6)';
 
+  // les points de vie sont des canettes
   for (let i = 0; i < MAX_HP; i++) {
-    drawHeart(20 + i * 26, 24, 9, i < player.hp);
+    ctx.save();
+    ctx.translate(21 + i * 24, 24);
+    ctx.scale(0.72, 0.72);
+    drawCan(i >= player.hp);
+    ctx.restore();
   }
 
-  // lives, as spare Alexandres
+  // les vies, en Alexandres de rechange
   drawFaceIcon(104, 20, 8);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#fdf6ef';
+  ctx.fillStyle = ink;
   ctx.font = 'bold 14px ui-rounded, system-ui, sans-serif';
   ctx.fillText(`×${Math.max(0, lives)}`, 116, 21);
 
-  // one slim bar per timed power, then the noodles he has left
+
+  // une jauge par pouvoir en cours, puis les nouilles restantes
   const bars = [];
   if (player.clipper > 0) bars.push(['#8bd7ff', player.clipper / CLIPPER_TIME]);
   if (player.jet > 0) bars.push(['#9ab53a', player.jet / JET_TIME]);
-  if (player.glide > 0) bars.push(['#ff8f5a', player.glide / GLIDE_TIME]);
+  if (player.fries > 0) bars.push(['#ffd93b', player.fries / FRIES_TIME]);
+  if (player.trans > 0) bars.push(['#fff6cd', player.trans / TRANS_TIME]);
   bars.forEach(([color, frac], i) => {
     const by = 40 + i * 10;
-    ctx.fillStyle = 'rgba(255,255,255,.16)';
+    ctx.fillStyle = player.trans > 0 ? 'rgba(63,45,16,.2)' : 'rgba(255,255,255,.16)';
     roundRect(14, by, 76, 6, 3);
     ctx.fill();
     ctx.fillStyle = color;
@@ -1490,22 +1763,22 @@ function drawHud() {
   if (player.noodles > 0) {
     ctx.fillStyle = '#ffd166';
     ctx.font = 'bold 12px ui-rounded, system-ui, sans-serif';
-    ctx.fillText(`🍜 ×${player.noodles} — tap a ledge`, 14, 46 + bars.length * 10);
+    ctx.fillText(`🍜 ×${player.noodles} — clique une passerelle`, 14, 46 + bars.length * 10);
   }
 
   ctx.textAlign = 'right';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = '#fdf6ef';
+  ctx.fillStyle = ink;
   ctx.font = 'bold 20px ui-rounded, system-ui, sans-serif';
   ctx.fillText(`${climbed} m`, VIEW.w - 16, 26);
-  ctx.fillStyle = 'rgba(253,246,239,.6)';
+  ctx.fillStyle = inkDim;
   ctx.font = '12px ui-rounded, system-ui, sans-serif';
-  ctx.fillText(`goal ${total} m · best ${best} m`, VIEW.w - 16, 43);
+  ctx.fillText(`objectif ${total} m · record ${best} m`, VIEW.w - 16, 43);
 
   // climb meter down the right edge
   const trackTop = 62;
   const trackH = VIEW.h - 100;
-  ctx.fillStyle = 'rgba(255,255,255,.12)';
+  ctx.fillStyle = player.trans > 0 ? 'rgba(63,45,16,.18)' : 'rgba(255,255,255,.12)';
   roundRect(VIEW.w - 12, trackTop, 5, trackH, 3);
   ctx.fill();
   const p = clamp(climbed / total, 0, 1);
@@ -1518,28 +1791,243 @@ function drawHud() {
   ctx.textAlign = 'right';
 
   if (muted) {
-    ctx.fillStyle = 'rgba(253,246,239,.5)';
+    ctx.fillStyle = inkDim;
     ctx.font = '11px ui-rounded, system-ui, sans-serif';
-    ctx.fillText('muted', VIEW.w - 16, VIEW.h - 14);
+    ctx.fillText('muet', VIEW.w - 16, VIEW.h - 14);
   }
 }
 
-function drawHeart(x, y, r, filled) {
+/* Une canette Red Bull, centrée sur l'origine courante. `dim` la vide de ses
+   couleurs : c'est un point de vie déjà perdu. */
+function drawCan(dim) {
+  const body = ctx.createLinearGradient(-7, 0, 7, 0);
+  if (dim) {
+    body.addColorStop(0, 'rgba(120,126,140,.35)');
+    body.addColorStop(0.4, 'rgba(190,196,210,.4)');
+    body.addColorStop(1, 'rgba(120,126,140,.35)');
+  } else {
+    body.addColorStop(0, '#8e97a8');
+    body.addColorStop(0.4, '#f2f5fa');
+    body.addColorStop(1, '#98a2b3');
+  }
+  ctx.fillStyle = body;
+  roundRect(-6.5, -11, 13, 22, 3);
+  ctx.fill();
+
   ctx.save();
-  ctx.translate(x, y);
+  roundRect(-6.5, -11, 13, 22, 3);
+  ctx.clip();
+  ctx.fillStyle = dim ? 'rgba(32,65,143,.3)' : '#20418f';
   ctx.beginPath();
-  ctx.moveTo(0, r * 0.75);
-  ctx.bezierCurveTo(-r * 1.5, -r * 0.4, -r * 0.5, -r * 1.3, 0, -r * 0.5);
-  ctx.bezierCurveTo(r * 0.5, -r * 1.3, r * 1.5, -r * 0.4, 0, r * 0.75);
+  ctx.moveTo(-8, 3); ctx.lineTo(2, -13); ctx.lineTo(8, -13); ctx.lineTo(-8, 11);
   ctx.closePath();
-  if (filled) {
-    ctx.fillStyle = '#ff6f91';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-8, 15); ctx.lineTo(7, -2); ctx.lineTo(9, 5); ctx.lineTo(-2, 15);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = dim ? 'rgba(255,209,102,.3)' : '#ffd166';
+  ctx.beginPath();
+  ctx.arc(0, 0, 4.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = dim ? 'rgba(198,40,40,.3)' : '#c62828';
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(dir * 0.8, -2.6); ctx.lineTo(dir * 5.4, -0.5); ctx.lineTo(dir * 0.8, 2.3);
+    ctx.closePath();
     ctx.fill();
   }
-  ctx.strokeStyle = filled ? 'rgba(255,255,255,.5)' : 'rgba(255,255,255,.28)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
   ctx.restore();
+
+  ctx.fillStyle = dim ? 'rgba(207,214,226,.4)' : '#cfd6e2';
+  roundRect(-5, -12.5, 10, 3, 1.5);
+  ctx.fill();
+  if (dim) {
+    ctx.strokeStyle = 'rgba(255,255,255,.22)';
+    ctx.lineWidth = 1.2;
+    roundRect(-6.5, -11, 13, 22, 3);
+    ctx.stroke();
+  }
+}
+
+/* Une frite qui vole. */
+function drawFry(fry) {
+  const y = fry.y - camY;
+  if (y < -30 || y > VIEW.h + 30) return;
+  ctx.save();
+  ctx.translate(fry.x, y);
+  ctx.rotate(fry.rot);
+  const g = ctx.createLinearGradient(-2, -7, 2, 7);
+  g.addColorStop(0, '#ffe680');
+  g.addColorStop(1, '#e8a93b');
+  ctx.fillStyle = g;
+  roundRect(-2.4, -7.5, 4.8, 15, 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.45)';
+  roundRect(-1.2, -6, 1.4, 9, 0.7);
+  ctx.fill();
+  ctx.restore();
+}
+
+/* Les icônes de la roue Uber Eats. */
+function drawMealIcon(meal, s) {
+  ctx.save();
+  ctx.scale(s, s);
+  if (meal === 'indien') {
+    ctx.fillStyle = '#c9772f';                       // curry
+    ctx.beginPath();
+    ctx.ellipse(0, -1, 11, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f0e6d2';                       // bol
+    ctx.beginPath();
+    ctx.moveTo(-13, -2);
+    ctx.quadraticCurveTo(0, 15, 13, -2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#8a5a2b';
+    ctx.beginPath();
+    ctx.arc(-4, -2, 1.8, 0, Math.PI * 2);
+    ctx.arc(3, -3, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (meal === 'nouilles') {
+    ctx.fillStyle = '#f0e6d2';
+    ctx.beginPath();
+    ctx.moveTo(-13, -2);
+    ctx.quadraticCurveTo(0, 15, 13, -2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#ffd166';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = -2; i <= 2; i++) {
+      ctx.moveTo(i * 4, -2);
+      ctx.quadraticCurveTo(i * 4 + 3, -9, i * 4 - 1, -13);
+    }
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = '#c62828';                       // cornet de frites
+    ctx.beginPath();
+    ctx.moveTo(-8, -2); ctx.lineTo(8, -2); ctx.lineTo(5, 14); ctx.lineTo(-5, 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffe680';
+    for (const dx of [-5, -1.5, 2, 5.5]) {
+      ctx.save();
+      ctx.translate(dx, -8);
+      ctx.rotate(dx * 0.05);
+      roundRect(-1.9, -6, 3.8, 12, 1.6);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+/* La machine à sous : la roue défile, ralentit, s'arrête sur le plat tiré. */
+function drawWheel() {
+  ctx.fillStyle = 'rgba(6,12,8,.62)';
+  ctx.fillRect(0, 0, VIEW.w, VIEW.h);
+
+  const cx = VIEW.w / 2;
+  const cy = VIEW.h / 2;
+  const slot = 72;
+  const done = wheelTimer >= WHEEL_SPIN;
+
+  // caisse de la machine
+  ctx.fillStyle = '#0d1c14';
+  roundRect(cx - 96, cy - 116, 192, 214, 18);
+  ctx.fill();
+  ctx.strokeStyle = '#06c167';
+  ctx.lineWidth = 3;
+  roundRect(cx - 96, cy - 116, 192, 214, 18);
+  ctx.stroke();
+
+  // ampoules du fronton
+  for (let i = 0; i < 7; i++) {
+    const on = done ? Math.floor(frames / 5) % 2 === 0 : (i + Math.floor(frames / 4)) % 3 === 0;
+    ctx.fillStyle = on ? '#ffd166' : 'rgba(255,209,102,.22)';
+    ctx.beginPath();
+    ctx.arc(cx - 78 + i * 26, cy - 100, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 15px ui-rounded, system-ui, sans-serif';
+  ctx.fillStyle = '#06c167';
+  ctx.fillText('UBER EATS', cx, cy - 80);
+
+  // hublot
+  ctx.save();
+  roundRect(cx - 62, cy - 62, 124, 104, 10);
+  ctx.fillStyle = '#f7f4ee';
+  ctx.fill();
+  roundRect(cx - 62, cy - 62, 124, 104, 10);
+  ctx.clip();
+
+  const pos = wheelPos();
+  const frac = pos - Math.floor(pos);
+  for (let i = -1; i <= 1; i++) {
+    const idx = ((Math.floor(pos) + i) % MEALS.length + MEALS.length) % MEALS.length;
+    const y = cy - 10 + i * slot - frac * slot;
+    ctx.save();
+    ctx.translate(cx, y);
+    drawMealIcon(MEALS[idx], 2.1);
+    ctx.restore();
+  }
+  ctx.restore();
+
+  // liseré du hublot + ligne de gain
+  ctx.strokeStyle = done ? '#ffd166' : 'rgba(255,255,255,.35)';
+  ctx.lineWidth = done ? 3 : 2;
+  roundRect(cx - 62, cy - 62, 124, 104, 10);
+  ctx.stroke();
+
+  // levier
+  ctx.strokeStyle = '#9fb3cc';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(cx + 104, cy - 40);
+  ctx.lineTo(cx + 104, cy - 6 + (done ? 26 : 0));
+  ctx.stroke();
+  ctx.fillStyle = '#c62828';
+  ctx.beginPath();
+  ctx.arc(cx + 104, cy - 46, 7, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.font = 'bold 14px ui-rounded, system-ui, sans-serif';
+  if (done) {
+    ctx.fillStyle = MEAL[wheelPick].spark;
+    ctx.fillText(MEAL[wheelPick].label, cx, cy + 72);
+  } else {
+    ctx.fillStyle = 'rgba(253,246,239,.75)';
+    ctx.fillText('ça tourne…', cx, cy + 72);
+  }
+}
+
+/* La fracture du monde, figée au moment de la crème puis résorbée à la fin. */
+function drawCracks() {
+  if (!cracks.length) return;
+  const grow = clamp(crackT / CRACK_GROW, 0, 1);
+  const fade = player.trans < 60 ? player.trans / 60 : 1;
+  ctx.lineCap = 'round';
+  for (const line of cracks) {
+    ctx.strokeStyle = `rgba(255,255,255,${0.5 * fade})`;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(line[0].x, line[0].y);
+    const upto = 1 + (line.length - 1) * grow;
+    for (let i = 1; i < upto; i++) {
+      const t = clamp(upto - i, 0, 1);
+      const a = line[i - 1];
+      const b = line[i];
+      ctx.lineTo(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(255,230,150,${0.28 * fade})`;
+    ctx.lineWidth = 6;
+    ctx.stroke();
+  }
 }
 
 function drawParticles() {
@@ -1596,58 +2084,61 @@ function draw() {
   for (const bonus of bonuses) drawBonus(bonus);
   if (state === 'cat') drawCatScene();
   drawParticles();
+  for (const fry of fries) drawFry(fry);
   for (const nail of nails) drawNail(nail);
   if (state !== 'dead' && state !== 'downed') {
     if (state !== 'cat') drawNoodle();
     drawPlayer();
     if (state !== 'cat') drawShield();
   }
+  if (player.trans > 0) drawCracks();
   drawToasts();
   drawHud();
+  if (state === 'wheel') drawWheel();
   ctx.restore();
 
   const climbed = height();
   const taken = MAX_HP - player.hp;
-  const hits = `${taken} hit${taken === 1 ? '' : 's'}`;
+  const hits = `${taken} coup${taken === 1 ? '' : 's'} pris`;
 
   if (state === 'title') {
     panel([
       ['ALEXANDRE', 'title'],
-      '…and Sabrina, the Foot Princess',
+      '…et Sabrina, la princesse aux pieds',
       '',
-      'Climb 500 m. Dodge the flying ongles.',
-      ['They take 1 HP out of 3 — and you have 3 lives.', 'dim'],
-      ['Grab hearts, nail clippers and winged feet.', 'dim'],
+      'Grimpe 500 m. Évite les ongles volants.',
+      ['Ils coûtent 1 Red Bull sur 3 — et tu as 3 vies.', 'dim'],
+      ['Ramasse les canettes, les coupe-ongles, les codes Uber Eats.', 'dim'],
       '',
-      ['← → or A / D to steer · he bounces by himself', 'dim'],
-      ['press any key, or tap, to begin', 'big'],
+      ['← → ou A / D pour te diriger · il rebondit tout seul', 'dim'],
+      ['appuie sur une touche, ou tape, pour commencer', 'big'],
     ]);
   } else if (state === 'pause') {
-    panel([['PAUSED', 'big'], ['press P to continue', 'dim']]);
+    panel([['PAUSE', 'big'], ['appuie sur P pour reprendre', 'dim']]);
   } else if (state === 'downed') {
     panel([
-      [deathReason === 'fall' ? 'He fell.' : 'The ongles got him.', 'big'],
-      [`${lives} ${lives === 1 ? 'life' : 'lives'} left`, 'body'],
-      ['back to the last checkpoint…', 'dim'],
+      [deathReason === 'fall' ? 'Il est tombé.' : 'Les ongles l’ont eu.', 'big'],
+      [`${lives} ${lives === 1 ? 'vie restante' : 'vies restantes'}`, 'body'],
+      ['retour au dernier checkpoint…', 'dim'],
     ], { dim: 0.5, align: 'bottom' });
   } else if (state === 'dead') {
     panel([
-      ['OUCH', 'title'],
-      deathReason === 'fall' ? 'Alexandre fell into the void.' : 'The ongles finished him.',
-      ['No lives left.', 'dim'],
-      [`${climbed} m climbed · best ${best} m`, 'body'],
+      ['AÏE', 'title'],
+      deathReason === 'fall' ? 'Alexandre est tombé dans le vide.' : 'Les ongles l’ont achevé.',
+      ['Plus aucune vie.', 'dim'],
+      [`${climbed} m grimpés · record ${best} m`, 'body'],
       '',
-      'Sabrina waits still.',
-      ['press R or tap to try again', 'big'],
+      'Sabrina attend toujours.',
+      ['appuie sur R ou tape pour réessayer', 'big'],
     ]);
   } else if (state === 'win') {
     panel([
-      ['SAVED! 👑', 'title'],
-      'Alexandre reaches Sabrina.',
-      'She was, in fact, also into glasses.',
-      [`${climbed} m climbed · ${hits} taken`, 'dim'],
+      ['SAUVÉE ! 👑', 'title'],
+      'Alexandre rejoint Sabrina.',
+      'Elle aussi, en fait, aimait les lunettes.',
+      [`${climbed} m grimpés · ${hits}`, 'dim'],
       '',
-      ['press R or tap for another climb', 'big'],
+      ['appuie sur R ou tape pour une autre ascension', 'big'],
     ], { dim: 0.4, align: 'bottom' });
   }
 }
@@ -1671,8 +2162,16 @@ function update() {
     stepPlayer();
     stepPlatforms();
     buildPlatforms();
-    stepBonuses();
-    stepNails();
+    // stepPlayer a pu le tuer ou lancer une cinématique : on s'arrête là, sinon
+    // un ongle encore en contact lui coûterait une seconde vie dans la même frame.
+    if (state === 'play') {
+      stepBonuses();
+      stepNails();
+      stepFries();
+    }
+  } else if (state === 'wheel') {
+    stepWheel();
+    stepPlatforms();
   } else if (state === 'cat') {
     stepCat();
     stepPlatforms();
@@ -1750,7 +2249,7 @@ function pointerDir(event) {
 
 canvas.addEventListener('pointerdown', (event) => {
   canvas.focus();
-  if (state === 'downed' || state === 'cat') return;   // both resolve on their own
+  if (state === 'downed' || state === 'cat' || state === 'wheel') return;  // se résolvent seuls
   if (state !== 'play' && state !== 'pause') { onAction(); return; }
   // With noodles in hand, a tap near a platform reels him in instead of steering.
   if (state === 'play' && player.noodles > 0 && !player.grapple) {
