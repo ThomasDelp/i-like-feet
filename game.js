@@ -1,4 +1,4 @@
-/* Alexandre & the Foot Princess — a vertical platformer.
+/* Alexandre & Sabrina, the Foot Princess — a vertical platformer.
 
    Alexandre bounces automatically; the player only steers left/right. The world
    is one tall column: y grows downward, so climbing means going negative. The
@@ -19,7 +19,7 @@ const START_LIVES = 3;
 const MAX_LIVES = 5;
 const CLIPPER_TIME = 8 * 60;  // how long a nail clipper keeps ongles off him
 const BOOST_VY = -20.5;       // Red Bull launch, ~2.5 platforms in one go
-const REST_EVERY = 850;       // world px between checkpoint platforms
+const MID_REST = -GOAL / 2;   // the one and only checkpoint, halfway up
 const DOWN_TIME = 78;         // frames of the "he's down" beat before respawning
 
 // The Nvidia cutscene, in frames: feeding, flexing, then the ride up.
@@ -29,12 +29,29 @@ const CAT_RIDE = 66;
 const CAT_TOTAL = CAT_FEED + CAT_FLEX + CAT_RIDE;
 const CAT_LIFT = 2000;        // 200 m in Nvidia's paws
 
+// Uber Eats roulette: one code, one random meal, one power.
+const JET_TIME = 3.4 * 60;    // curry propulsion
+const JET_MAX = -9;           // terminal climb rate under fart power
+const GLIDE_TIME = 7 * 60;    // pizza-box glider
+const GLIDE_FALL = 2.2;       // capped descent while gliding
+const NOODLE_USES = 3;        // spider-noodle grapples
+const GRAPPLE_FRAMES = 14;
+const NOODLE_RANGE = 78;      // how close a tap must land to a platform
+
+const MEALS = ['indien', 'nouilles', 'pizza'];
+const MEAL = {
+  indien:   { label: '🍛 INDIEN — PROPULSION!',   spark: '#9ab53a' },
+  nouilles: { label: '🍜 NOUILLES — SPIDER-ALEX!', spark: '#ffd166' },
+  pizza:    { label: '🍕 PIZZA — PLANEUR!',        spark: '#ff8f5a' },
+};
+
 const BONUS = {
   heart:   { label: '+1 HP',              spark: '#ff6f91', glow: 'rgba(255,111,145,.4)' },
   life:    { label: '1 UP',               spark: '#ffd166', glow: 'rgba(255,209,102,.4)' },
   clipper: { label: 'COUPE-ONGLES!',      spark: '#8bd7ff', glow: 'rgba(139,215,255,.4)' },
   boost:   { label: 'ÇA DONNE DES AILES!', spark: '#ffd166', glow: 'rgba(255,209,102,.4)' },
   cat:     { label: 'NVIDIA!',            spark: '#76b900', glow: 'rgba(118,185,0,.45)' },
+  uber:    { label: 'UBER EATS!',         spark: '#06c167', glow: 'rgba(6,193,103,.42)' },
 };
 
 const canvas = document.getElementById('game');
@@ -110,6 +127,8 @@ const sfx = {
   boost: () => { beep(300, 0.2, 'sawtooth', 0.05); setTimeout(() => beep(720, 0.18, 'triangle', 0.05), 90); },
   clip: () => beep(1500, 0.05, 'square', 0.045),
   check: () => { beep(523, 0.1, 'triangle', 0.06); setTimeout(() => beep(784, 0.16, 'triangle', 0.06), 90); },
+  fart: () => [0, 90, 165].forEach((d, i) => setTimeout(() => beep(rand(58, 104) - i * 6, 0.14, 'sawtooth', 0.055), d)),
+  noodle: () => { beep(880, 0.06, 'triangle', 0.05); setTimeout(() => beep(560, 0.1, 'triangle', 0.045), 60); },
 };
 
 /* ----------------------------------------------------------------- input */
@@ -129,7 +148,7 @@ function steer() {
 let state = 'title';          // title | play | pause | cat | downed | dead | win
 let player, platforms, nails, bonuses, toasts, particles, backFeet;
 let camY, groundY, goalY, best, shake, frames, nailTimer, endTimer;
-let lives, checkpoint, nextRest, downTimer, deathReason;
+let lives, checkpoint, restPlaced, downTimer, deathReason;
 let catTimer, catFrom, catTarget;
 
 function reset() {
@@ -143,11 +162,12 @@ function reset() {
     vx: 0, vy: 0,
     face: 1, hp: MAX_HP, invuln: 0, clipper: 0,
     squash: 0, blink: 0, peak: 0,
+    jet: 0, glide: 0, noodles: 0, grapple: null,
   };
 
   lives = START_LIVES;
   checkpoint = { x: VIEW.w / 2 - 90, y: groundY, w: 180, type: 'ground' };
-  nextRest = groundY - REST_EVERY;
+  restPlaced = false;
   downTimer = 0;
   deathReason = null;
   catTimer = 0;
@@ -205,11 +225,11 @@ function buildPlatforms() {
 
     let width = rand(96 - t * 34, 128 - t * 40);
     let type = 'normal';
-    if (next <= nextRest) {
-      // A wide, safe checkpoint ledge every REST_EVERY pixels.
+    if (!restPlaced && next <= MID_REST) {
+      // The single wide checkpoint ledge, halfway to Sabrina.
       type = 'rest';
-      width = 132;
-      nextRest = next - REST_EVERY;
+      width = 136;
+      restPlaced = true;
     } else {
       const roll = Math.random();
       if (climbed > 900 && roll < 0.16 + t * 0.12) type = 'moving';
@@ -241,11 +261,12 @@ function maybeBonus(plat, climbed) {
   if (plat.type === 'rest') {
     if (roll < 0.25) kind = 'heart';
     else if (roll < 0.35) kind = 'clipper';
-  } else if (roll < 0.022) kind = 'boost';
-  else if (roll < 0.042) kind = 'clipper';
-  else if (roll < 0.062) kind = 'heart';
-  else if (roll < 0.078 && climbed > 600) kind = 'cat';
-  else if (roll < 0.085 && climbed > 1200) kind = 'life';
+  } else if (roll < 0.018) kind = 'boost';
+  else if (roll < 0.034) kind = 'clipper';
+  else if (roll < 0.052) kind = 'heart';
+  else if (roll < 0.070) kind = 'uber';
+  else if (roll < 0.084 && climbed > 600) kind = 'cat';
+  else if (roll < 0.090 && climbed > 1200) kind = 'life';
 
   if (!kind) return;
   bonuses.push({
@@ -283,6 +304,7 @@ function stepBonuses() {
 function collect(b) {
   b.taken = true;
   let label = BONUS[b.kind].label;
+  let spark = BONUS[b.kind].spark;
 
   if (b.kind === 'heart') {
     if (player.hp < MAX_HP) {
@@ -310,10 +332,94 @@ function collect(b) {
     sfx.boost();
   } else if (b.kind === 'cat') {
     startCat();
+  } else if (b.kind === 'uber') {
+    const meal = pick(MEALS);
+    serveMeal(meal);
+    toast('UBER EATS', b.x, b.y - 40, '#06c167');
+    label = MEAL[meal].label;
+    spark = MEAL[meal].spark;
   }
 
-  burst(b.x, b.y, 13, ['#fdf6ef', BONUS[b.kind].spark], 3.2);
-  toast(label, b.x, b.y - 14, BONUS[b.kind].spark);
+  burst(b.x, b.y, 13, ['#fdf6ef', spark], 3.2);
+  toast(label, b.x, b.y - 14, spark);
+}
+
+/* ------------------------------------------------------------------- meals
+
+   One Uber Eats code, one random dish, one power. */
+
+function serveMeal(meal) {
+  if (meal === 'indien') {
+    player.jet = JET_TIME;
+    sfx.fart();
+  } else if (meal === 'nouilles') {
+    player.noodles = NOODLE_USES;
+    sfx.noodle();
+  } else {
+    player.glide = GLIDE_TIME;
+    sfx.pickup();
+  }
+}
+
+/* Spider-Alex: tap a platform and a noodle reels him in. Moving platforms are
+   tracked by offset, so the anchor follows them. */
+function platformNear(wx, wy) {
+  let best = null;
+  let bestD = NOODLE_RANGE;
+  for (const plat of platforms) {
+    if (plat.dead) continue;
+    const cx = clamp(wx, plat.x, plat.x + plat.w);
+    const d = Math.hypot(wx - cx, wy - plat.y);
+    if (d < bestD) {
+      bestD = d;
+      best = plat;
+    }
+  }
+  return best;
+}
+
+function startGrapple(plat, wx) {
+  player.noodles -= 1;
+  const grabOff = clamp(wx, plat.x + 8, plat.x + plat.w - 8) - plat.x;
+  player.grapple = {
+    plat,
+    grabOff,
+    t: 0,
+    fromX: player.x,
+    fromY: player.y,
+    toX: plat.x + grabOff,
+    toY: plat.y - player.h / 2,
+  };
+  sfx.noodle();
+}
+
+function stepGrapple() {
+  const g = player.grapple;
+  g.t += 1;
+
+  const live = g.plat && !g.plat.dead;
+  const toX = live ? g.plat.x + g.grabOff : g.toX;
+  const toY = live ? g.plat.y - player.h / 2 : g.toY;
+
+  const p = clamp(g.t / GRAPPLE_FRAMES, 0, 1);
+  const eased = p * p * (3 - 2 * p);
+  player.x = g.fromX + (toX - g.fromX) * eased;
+  player.y = g.fromY + (toY - g.fromY) * eased;
+  player.face = toX < g.fromX ? -1 : 1;
+  player.peak = Math.max(player.peak, (groundY - player.h / 2 - player.y) / 10);
+  camY = Math.min(camY, player.y - VIEW.h * 0.55);
+
+  if (g.t % 3 === 0) burst(player.x, player.y, 1, ['#ffd166', '#fff0c2'], 1);
+
+  if (p >= 1) {
+    player.grapple = null;
+    if (live) {
+      land(g.plat);
+    } else {
+      player.vy = JUMP * 0.9;
+      sfx.jump();
+    }
+  }
 }
 
 /* --------------------------------------------------------------- Nvidia the cat
@@ -329,6 +435,7 @@ function startCat() {
   player.vx = 0;
   player.vy = 0;
   player.invuln = INVULN;
+  player.grapple = null;
   nails = [];
   playCatSound();
 }
@@ -456,6 +563,10 @@ function downed(reason) {
   deathReason = reason;
   player.hp = 0;
   player.clipper = 0;
+  player.jet = 0;
+  player.glide = 0;
+  player.noodles = 0;
+  player.grapple = null;
   shake = 18;
   burst(player.x, player.y, 20, ['#ffd9c9', '#ff8fa3', '#fdf6ef'], 4.2);
   saveBest();
@@ -478,7 +589,6 @@ function respawn() {
   platforms = [{ ...checkpoint, dead: false }];
   nails = [];
   bonuses = [];
-  nextRest = checkpoint.y - REST_EVERY;
 
   player.x = checkpoint.x + checkpoint.w / 2;
   player.y = checkpoint.y - player.h / 2 - 2;
@@ -487,6 +597,7 @@ function respawn() {
   player.hp = MAX_HP;
   player.invuln = INVULN;
   nailTimer = 130;
+  restPlaced = checkpoint.type === 'rest';   // the mid ledge is behind him now
 
   camY = checkpoint.y - VIEW.h * 0.55;
   buildPlatforms();
@@ -524,6 +635,11 @@ function stepParticles() {
 /* ------------------------------------------------------------------ player */
 
 function stepPlayer() {
+  if (player.grapple) {
+    stepGrapple();
+    return;
+  }
+
   const dir = steer();
   if (dir !== 0) {
     player.vx += dir * MOVE_ACCEL;
@@ -540,6 +656,11 @@ function stepPlayer() {
 
   const prevBottom = player.y + player.h / 2;
   player.vy = Math.min(player.vy + GRAVITY, 17);
+
+  // Curry propulsion beats gravity; a pizza box only slows the fall.
+  if (player.jet > 0) player.vy = Math.max(player.vy - 1.15, JET_MAX);
+  else if (player.glide > 0 && player.vy > 0) player.vy = Math.min(player.vy, GLIDE_FALL);
+
   player.y += player.vy;
   const bottom = player.y + player.h / 2;
 
@@ -557,6 +678,15 @@ function stepPlayer() {
 
   if (player.invuln > 0) player.invuln--;
   if (player.clipper > 0) player.clipper--;
+  if (player.glide > 0) player.glide--;
+  if (player.jet > 0) {
+    player.jet--;
+    if (player.jet % 2 === 0) {
+      burst(player.x + rand(-5, 5), player.y + player.h / 2 - 2, 2,
+        ['#9ab53a', '#7a8f2c', 'rgba(190,210,130,.7)'], 2.2);
+    }
+    if (player.jet % 15 === 0) beep(rand(56, 96), 0.1, 'sawtooth', 0.035);
+  }
   if (player.squash > 0) player.squash--;
   if (player.vy < -15 && frames % 2 === 0) {
     burst(player.x, player.y + player.h / 2, 2, ['#ffd166', '#5b8def', 'rgba(255,255,255,.9)'], 1.2);
@@ -835,6 +965,27 @@ function drawBonus(b) {
     ctx.fill();
   } else if (b.kind === 'cat') {
     drawCat(0, 6, 0.62, false, false);
+  } else if (b.kind === 'uber') {
+    // paper delivery bag with a green label
+    ctx.rotate(Math.sin(b.bob * 0.5) * 0.12);
+    ctx.strokeStyle = '#c9a06a';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(-3, -8, 3.2, Math.PI, 0);
+    ctx.arc(3.5, -8, 3.2, Math.PI, 0);
+    ctx.stroke();
+    ctx.fillStyle = '#d8a86e';
+    roundRect(-8, -7, 16, 18, 2);
+    ctx.fill();
+    ctx.fillStyle = '#c1905a';
+    roundRect(-8, -7, 16, 3.5, 1.5);
+    ctx.fill();
+    ctx.fillStyle = '#06c167';
+    roundRect(-5.5, -1, 11, 7, 1.5);
+    ctx.fill();
+    ctx.fillStyle = '#04381f';
+    roundRect(-3.5, 1.4, 7, 1.4, 0.7);
+    ctx.fill();
   }
 
   ctx.restore();
@@ -1033,6 +1184,33 @@ function drawCatScene() {
   }
 }
 
+/* The noodle he's currently reeling himself in on. */
+function drawNoodle() {
+  const g = player.grapple;
+  if (!g) return;
+  const live = g.plat && !g.plat.dead;
+  const ax = live ? g.plat.x + g.grabOff : g.toX;
+  const ay = (live ? g.plat.y : g.toY) - camY;
+  const px = player.x;
+  const py = player.y - camY - 8;
+
+  ctx.strokeStyle = '#ffd166';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(px, py);
+  for (let i = 1; i <= 8; i++) {
+    const t = i / 8;
+    const wob = Math.sin(t * 7 + frames * 0.45) * 6 * (1 - t);
+    ctx.lineTo(px + (ax - px) * t + wob, py + (ay - py) * t);
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#fff0c2';
+  ctx.beginPath();
+  ctx.arc(ax, ay, 3.4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 /* Shield ring while the clipper is live; it blinks out over the last second. */
 function drawShield() {
   if (player.clipper <= 0) return;
@@ -1074,6 +1252,18 @@ function drawPlayer() {
   ctx.translate(player.x, y);
   ctx.globalAlpha = flicker ? 0.35 : 1;
   ctx.scale(player.face * sx, sy);
+
+  // curry propulsion: a plume at his feet, since the particle trail is left far
+  // behind once he's climbing at full thrust
+  if (player.jet > 0) {
+    for (let i = 0; i < 3; i++) {
+      const t = frames * 0.35 + i * 2.1;
+      ctx.fillStyle = `rgba(154,181,58,${0.45 - i * 0.12})`;
+      ctx.beginPath();
+      ctx.arc(Math.sin(t * 1.3) * 3.5, 23 + i * 10, 7 + Math.sin(t) * 2.4 + i * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 
   // shadow-ish outline behind the body keeps him readable on bright platforms
   ctx.fillStyle = 'rgba(0,0,0,.25)';
@@ -1136,6 +1326,24 @@ function drawPlayer() {
   ctx.arc(11, -11, 2.6, 0, Math.PI * 2);
   ctx.fill();
 
+  // pizza box, held overhead as a glider
+  if (player.glide > 0) {
+    ctx.fillStyle = '#c98a4b';
+    roundRect(-17, -36, 34, 9, 2);
+    ctx.fill();
+    ctx.fillStyle = '#e2ac74';
+    roundRect(-17, -36, 34, 3.5, 1.5);
+    ctx.fill();
+    ctx.fillStyle = '#c62828';
+    ctx.fillRect(-5, -36, 10, 9);
+    ctx.strokeStyle = '#f0c49b';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-11, -27); ctx.lineTo(-8, -18);
+    ctx.moveTo(11, -27); ctx.lineTo(8, -18);
+    ctx.stroke();
+  }
+
   // glasses
   ctx.strokeStyle = '#241c33';
   ctx.lineWidth = 1.8;
@@ -1165,7 +1373,7 @@ function drawPlayer() {
   ctx.globalAlpha = 1;
 }
 
-/* The Foot Princess: a regal foot, crowned, waiting at the summit. */
+/* Sabrina, the Foot Princess: a regal foot, crowned, waiting at the summit. */
 function drawPrincess() {
   const y = goalY - camY - 52 + Math.sin(frames * 0.045) * 5;
   if (y < -180 || y > VIEW.h + 180) return;
@@ -1265,14 +1473,24 @@ function drawHud() {
   ctx.font = 'bold 14px ui-rounded, system-ui, sans-serif';
   ctx.fillText(`×${Math.max(0, lives)}`, 116, 21);
 
-  // clipper timer
-  if (player.clipper > 0) {
+  // one slim bar per timed power, then the noodles he has left
+  const bars = [];
+  if (player.clipper > 0) bars.push(['#8bd7ff', player.clipper / CLIPPER_TIME]);
+  if (player.jet > 0) bars.push(['#9ab53a', player.jet / JET_TIME]);
+  if (player.glide > 0) bars.push(['#ff8f5a', player.glide / GLIDE_TIME]);
+  bars.forEach(([color, frac], i) => {
+    const by = 40 + i * 10;
     ctx.fillStyle = 'rgba(255,255,255,.16)';
-    roundRect(14, 40, 76, 6, 3);
+    roundRect(14, by, 76, 6, 3);
     ctx.fill();
-    ctx.fillStyle = '#8bd7ff';
-    roundRect(14, 40, 76 * (player.clipper / CLIPPER_TIME), 6, 3);
+    ctx.fillStyle = color;
+    roundRect(14, by, 76 * clamp(frac, 0, 1), 6, 3);
     ctx.fill();
+  });
+  if (player.noodles > 0) {
+    ctx.fillStyle = '#ffd166';
+    ctx.font = 'bold 12px ui-rounded, system-ui, sans-serif';
+    ctx.fillText(`🍜 ×${player.noodles} — tap a ledge`, 14, 46 + bars.length * 10);
   }
 
   ctx.textAlign = 'right';
@@ -1380,6 +1598,7 @@ function draw() {
   drawParticles();
   for (const nail of nails) drawNail(nail);
   if (state !== 'dead' && state !== 'downed') {
+    if (state !== 'cat') drawNoodle();
     drawPlayer();
     if (state !== 'cat') drawShield();
   }
@@ -1394,7 +1613,7 @@ function draw() {
   if (state === 'title') {
     panel([
       ['ALEXANDRE', 'title'],
-      '…and the Foot Princess',
+      '…and Sabrina, the Foot Princess',
       '',
       'Climb 500 m. Dodge the flying ongles.',
       ['They take 1 HP out of 3 — and you have 3 lives.', 'dim'],
@@ -1418,13 +1637,13 @@ function draw() {
       ['No lives left.', 'dim'],
       [`${climbed} m climbed · best ${best} m`, 'body'],
       '',
-      'The Foot Princess waits still.',
+      'Sabrina waits still.',
       ['press R or tap to try again', 'big'],
     ]);
   } else if (state === 'win') {
     panel([
       ['SAVED! 👑', 'title'],
-      'Alexandre reaches the Foot Princess.',
+      'Alexandre reaches Sabrina.',
       'She was, in fact, also into glasses.',
       [`${climbed} m climbed · ${hits} taken`, 'dim'],
       '',
@@ -1533,6 +1752,18 @@ canvas.addEventListener('pointerdown', (event) => {
   canvas.focus();
   if (state === 'downed' || state === 'cat') return;   // both resolve on their own
   if (state !== 'play' && state !== 'pause') { onAction(); return; }
+  // With noodles in hand, a tap near a platform reels him in instead of steering.
+  if (state === 'play' && player.noodles > 0 && !player.grapple) {
+    const rect = canvas.getBoundingClientRect();
+    const wx = ((event.clientX - rect.left) / rect.width) * VIEW.w;
+    const wy = ((event.clientY - rect.top) / rect.height) * VIEW.h + camY;
+    const plat = platformNear(wx, wy);
+    if (plat) {
+      startGrapple(plat, wx);
+      return;
+    }
+  }
+
   touchDir = pointerDir(event);
   canvas.setPointerCapture(event.pointerId);
 });
