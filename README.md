@@ -17,27 +17,42 @@ his three Red Bulls (the HP bar is a row of cans).
 | <kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd> | Steer. He bounces on his own. |
 | <kbd>P</kbd> · <kbd>R</kbd> · <kbd>M</kbd> | Pause · restart · mute |
 | Touch | Hold the left or right half of the canvas |
-| <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | Pick a skin, on the title screen — or click its card |
+| <kbd>1</kbd> … <kbd>7</kbd> | Pick a skin, on the title screen — or click its card |
+| <kbd>T</kbd> | Back to the skin picker from anywhere — also a **Tenues** button on the end screens |
 | Game over / win | Hit the on-canvas **Rejouer** button (armed after ~0.8 s) or <kbd>R</kbd> — a stray tap anywhere else no longer wipes the score off the screen |
 
 ### Skins
 
-Three outfits, picked on the title screen — click a card, or press
-<kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>. The choice and the unlocks are kept in
-`localStorage`, so they survive the tab.
+Seven outfits, picked on the title screen — click a card, or press
+<kbd>1</kbd>…<kbd>7</kbd>. The choice and the unlocks are kept in
+`localStorage`, so they survive the tab. Past four, the cards wrap to a second
+row; `skinPickerHeight()` reports the block's height so the title screen can sit
+it above the prompt.
 
 | | | |
 | --- | --- | --- |
 | **Le classique** | black tee, brown trousers | free |
 | **La princesse** | boxers, pink butterfly wings that beat faster as he rises, and a crown | reach **250 m** |
 | **Le super-héros** | swim trunks with the Mistral M on the front | **save Sabrina without losing a life** |
+| **Le blouson** | leather jacket zipped across, grey tee at the collar, jeans | reach **100 m** |
+| **Le capitaine** | white tee, black shorts, black life vest | **save Sabrina**, whatever it cost |
+| **L’hiver** | black beanie, black coat, blue-and-black scarf with red stripes | reach **400 m** |
+| **Le pyjama** | striped, buttoned, with slippers | **meet Nvidia**, his cat |
+
+An unlock is announced on the end screen that earned it, in gold: the toast it
+also fires is drawn under the panel and at the player's position, where nobody
+sees it. The **Tenues** button beside *Rejouer* — or <kbd>T</kbd> — goes back to
+the picker, so a skin can be worn without reloading the page.
 
 Locked cards are dimmed and show what they cost. Unlock conditions are declared
 next to each skin and evaluated by `checkUnlocks()` — from the play loop for
-altitude, and from `win()` for the flawless run, since that can only be judged
+altitude and for the cat (`player.metCat`, set when the cutscene starts), and
+from `win()` for the two that hang on the summit, since those can only be judged
 once. The character is drawn by one `drawAlexandre(skin, pose)`, so the picker
 cards and the legend show the real thing rather than a portrait maintained on
-the side.
+the side. Each garment is a flag on the skin (`jacket`, `vest`, `coat`,
+`beanie`, `scarf`, `stripes`, `hipShorts`) with its own small draw function, so
+outfits mix rather than each one forking the body.
 
 ### Lives and checkpoints
 

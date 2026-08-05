@@ -64,7 +64,7 @@ const BONUS = {
 /* --------------------------------------------------------------- les skins
 
    Une tenue par skin, plus ce qu'il faut débloquer pour y avoir droit. Le
-   premier est offert ; les deux autres s'obtiennent en jouant. `test` est
+   premier est offert ; les autres s'obtiennent en jouant. `test` est
    évalué au bon moment par unlock() — jamais en boucle de rendu. */
 
 const SKINS = [
@@ -99,6 +99,49 @@ const SKINS = [
     // course parfaite finirait à 4 vies — ce serait le comble de la fermer là.
     test: () => state === 'win' && lives >= START_LIVES,
   },
+  {
+    id: 'cuir',
+    name: 'Le blouson',
+    desc: 'veste en cuir, jean',
+    shirt: '#26262b', collar: '#17171b', sleeves: true,
+    jacket: true, inner: '#dcd7cf', lapel: '#34343b', zip: '#9aa0ad',
+    trousers: '#4a6b9c', belt: '#2a2119', shoes: '#3a3230',
+    need: '100 m atteints',
+    test: () => player.peak >= 100,
+  },
+  {
+    id: 'capitaine',
+    name: 'Le capitaine',
+    desc: 't-shirt blanc, gilet noir',
+    shirt: '#f5f2ea', collar: '#e3ddcf', sleeves: true,
+    vest: '#1b1d22',
+    hipShorts: true, shorts: '#1f232b', shortsBand: 'rgba(245,242,234,.35)',
+    trousers: '#f0c49b', shoes: '#f5f2ea',   // jambes nues, chaussures de pont
+    need: 'Sabrina sauvée',
+    test: () => state === 'win',
+  },
+  {
+    id: 'hiver',
+    name: 'L’hiver',
+    desc: 'bonnet, manteau, écharpe',
+    shirt: '#191c22', collar: '#101319', sleeves: true,
+    coat: true, buttons: '#3d424c',
+    beanie: true, hat: '#15181e', hatBand: '#22262e', pompom: '#2b3038',
+    scarf: '#2f63b5', scarfAlt: '#151820', scarfDot: '#d33b34',
+    trousers: '#2b2f36', shoes: '#4a3b30',
+    need: '400 m atteints',
+    test: () => player.peak >= 400,
+  },
+  {
+    id: 'pyjama',
+    name: 'Le pyjama',
+    desc: 'rayé, avec chaussons',
+    shirt: '#8fa4e0', collar: '#6f86c9', sleeves: true,
+    stripes: 'rgba(255,255,255,.4)', buttons: '#f4f1ff',
+    trousers: '#8fa4e0', shoes: '#f6dfae',
+    need: 'Nvidia rencontré',
+    test: () => player.metCat,
+  },
 ];
 
 const SKIN = Object.fromEntries(SKINS.map((s) => [s.id, s]));
@@ -117,6 +160,7 @@ const MISTRAL_M = [
 
 let skin = FREE_SKIN;
 let unlocked = new Set([FREE_SKIN]);
+let unlockedThisRun = [];   // ce que l'écran de fin doit annoncer
 
 function loadSkins() {
   try {
@@ -138,6 +182,7 @@ function saveSkins() {
 function unlock(id) {
   if (unlocked.has(id)) return false;
   unlocked.add(id);
+  unlockedThisRun.push(id);
   saveSkins();
   toast(`SKIN DÉBLOQUÉ : ${SKIN[id].name.toUpperCase()}`, player.x, player.y - 62, '#ffd166');
   sfx.oneup();
@@ -272,9 +317,11 @@ function reset() {
     face: 1, hp: MAX_HP, invuln: 0, clipper: 0,
     squash: 0, blink: 0, peak: 0,
     jet: 0, fries: 0, noodles: 0, grapple: null, trans: 0,
+    metCat: false,   // le chat croisé au moins une fois : ça vaut un pyjama
   };
 
   lives = START_LIVES;
+  unlockedThisRun = [];
   checkpoint = { x: VIEW.w / 2 - 90, y: groundY, w: 180, type: 'ground' };
   restPlaced = false;
   downTimer = 0;
@@ -711,6 +758,7 @@ function stepGrapple() {
 
 function startCat() {
   state = 'cat';
+  player.metCat = true;
   catTimer = 0;
   catFrom = player.y;
   catTarget = Math.max(goalY + 40, player.y - CAT_LIFT);
@@ -1719,14 +1767,27 @@ function drawAlexandre(skinId, pose = {}) {
     ctx.fill();
     drawUnderwear(s);
   } else {
-    // le t-shirt s'arrête au-dessus de la taille : sans ça le pantalon ne se
-    // voit pas entre le torse et les chaussures
+    // le haut s'arrête au-dessus de la taille : sans ça le pantalon ne se voit
+    // pas entre le torse et les chaussures. Un manteau, lui, descend plus bas.
+    const bodyH = s.coat ? 21 : 17;
     ctx.fillStyle = s.shirt;
-    roundRect(-10, -3, 20, 17, 7);
+    roundRect(-10, -3, 20, bodyH, 7);
     ctx.fill();
+    if (s.stripes) drawStripes(s, bodyH);
     ctx.fillStyle = s.collar;
     roundRect(-10, -3, 20, 8, 6);
     ctx.fill();
+    if (s.hipShorts) drawHipShorts(s);   // posé par-dessus le bas du t-shirt
+    if (s.belt) {
+      ctx.fillStyle = s.belt;
+      roundRect(-9.8, 11.6, 19.6, 3, 1.4);
+      ctx.fill();
+    }
+    if (s.jacket) drawJacket(s);
+    if (s.coat) drawCoat(s);
+    if (s.vest) drawLifeVest(s);
+    if (s.buttons && !s.coat) drawButtons(s);
+    if (s.scarf) drawScarf(s);
   }
 
   // arms — up when rising, out when falling
@@ -1768,6 +1829,7 @@ function drawAlexandre(skinId, pose = {}) {
   ctx.fill();
 
   if (s.crown) drawTinyCrown();
+  if (s.beanie) drawBeanie(s);
 
   // cornet de frites, tenu bien serré
   if (fries) {
@@ -1889,6 +1951,171 @@ function drawUnderwear(s) {
     }
   }
   if (s.logo) drawMistralLogo(0, 10.4, 1.25);
+}
+
+/* Le short posé sur les hanches, jambes nues en dessous : le t-shirt s'arrête
+   au-dessus, alors le short doit couvrir le haut des cuisses lui-même. */
+function drawHipShorts(s) {
+  ctx.fillStyle = s.shorts;
+  ctx.beginPath();
+  ctx.moveTo(-9.4, 8.6);
+  ctx.lineTo(9.4, 8.6);
+  ctx.lineTo(9.4, 16.2);
+  ctx.quadraticCurveTo(9.4, 18, 7.6, 18);
+  ctx.lineTo(2.6, 18);
+  ctx.quadraticCurveTo(1.4, 18, 1, 16.2);
+  ctx.lineTo(0, 13.4);
+  ctx.lineTo(-1, 16.2);
+  ctx.quadraticCurveTo(-1.4, 18, -2.6, 18);
+  ctx.lineTo(-7.6, 18);
+  ctx.quadraticCurveTo(-9.4, 18, -9.4, 16.2);
+  ctx.closePath();
+  ctx.fill();
+
+  if (s.shortsBand) {                  // le cordon, qui détache le short du haut
+    ctx.fillStyle = s.shortsBand;
+    roundRect(-9.4, 8.8, 18.8, 1.6, 0.8);
+    ctx.fill();
+  }
+}
+
+/* Le perfecto : fermé en biais, col relevé, un bout de t-shirt à l'échancrure.
+   Tout est détouré au torse, les revers et la fermeture mordant sur ses bords. */
+function drawJacket(s) {
+  ctx.save();
+  roundRect(-10, -3, 20, 17, 7);
+  ctx.clip();
+
+  ctx.fillStyle = s.inner;                      // le t-shirt, sous le col
+  ctx.beginPath();
+  ctx.moveTo(-4.6, 1.4);
+  ctx.lineTo(4.6, 1.4);
+  ctx.lineTo(0, 6.4);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = s.lapel;                      // les revers, rabattus de biais
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(dir * 2, 1.4);
+    ctx.lineTo(dir * 9.6, 0);
+    ctx.lineTo(dir * 8, 8.6);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = s.zip;                      // la fermeture, en travers
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  ctx.moveTo(-3.4, 7.4);
+  ctx.lineTo(4.4, 13.4);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255,255,255,.12)';      // le cuir accroche la lumière
+  ctx.beginPath();
+  ctx.ellipse(-6.2, 5, 2.4, 4.6, 0.25, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/* Le manteau d'hiver : une couture croisée et deux boutons. */
+function drawCoat(s) {
+  ctx.strokeStyle = 'rgba(255,255,255,.08)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(2.2, 4);
+  ctx.lineTo(2.2, 16.4);
+  ctx.stroke();
+  ctx.fillStyle = s.buttons;
+  for (const y of [6, 11.5]) {
+    ctx.beginPath();
+    ctx.arc(-1.6, y, 1.1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/* Le gilet de sauvetage : deux pans, un col qui passe derrière la nuque, les
+   sangles qui les relient et une bande réfléchissante par pan. Il s'arrête bien
+   au-dessus de la taille, sinon le t-shirt blanc disparaît entre lui et le short. */
+function drawLifeVest(s) {
+  ctx.fillStyle = s.vest;
+  for (const dir of [-1, 1]) {
+    roundRect(dir > 0 ? 4 : -9.6, -1.5, 5.6, 8.7, 2.4);
+    ctx.fill();
+  }
+  roundRect(-9.8, -2.6, 19.6, 4.2, 2.1);
+  ctx.fill();
+
+  ctx.strokeStyle = s.vest;                     // une seule sangle : à 26 px de
+  ctx.lineWidth = 1.6;                          // haut, deux brouillent le blanc
+  ctx.beginPath();
+  ctx.moveTo(-4.4, 3.8);
+  ctx.lineTo(4.4, 3.8);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(226,232,240,.65)';      // la boucle, au milieu
+  roundRect(-1.4, 2.9, 2.8, 1.8, 0.8);
+  ctx.fill();
+}
+
+/* L'écharpe, en deux tours : bleu et noir, avec les rayures rouges. */
+function drawScarf(s) {
+  ctx.fillStyle = s.scarf;                      // le tour de cou
+  roundRect(-10.4, -4.6, 20.8, 6.6, 3);
+  ctx.fill();
+  ctx.fillStyle = s.scarfAlt;
+  roundRect(-10.4, -2.4, 20.8, 2.4, 1.2);
+  ctx.fill();
+  ctx.fillStyle = s.scarfDot;
+  roundRect(-10.4, -4.4, 20.8, 1.1, 0.55);
+  ctx.fill();
+
+  ctx.fillStyle = s.scarf;                      // le pan qui retombe sur le côté
+  roundRect(4.8, 0.4, 4.8, 11, 2);
+  ctx.fill();
+  ctx.fillStyle = s.scarfAlt;
+  roundRect(4.8, 4.4, 4.8, 2.4, 1.2);
+  ctx.fill();
+  ctx.fillStyle = s.scarfDot;
+  roundRect(4.8, 9.2, 4.8, 2.2, 1.1);         // la frange, tout en bas
+  ctx.fill();
+}
+
+/* Le bonnet, tiré jusqu'au-dessus des lunettes — le crâne luisant disparaît. */
+function drawBeanie(s) {
+  ctx.fillStyle = s.hat;
+  ctx.beginPath();
+  ctx.arc(0, -12, 11.6, Math.PI * 1.02, Math.PI * 1.98);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = s.hatBand;                    // le revers
+  roundRect(-11.8, -19.8, 23.6, 4.4, 2.2);
+  ctx.fill();
+  ctx.fillStyle = s.pompom;
+  ctx.beginPath();
+  ctx.arc(0, -25.8, 2.8, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/* Les rayures du pyjama, détourées à la forme du haut. */
+function drawStripes(s, bodyH) {
+  ctx.save();
+  roundRect(-10, -3, 20, bodyH, 7);
+  ctx.clip();
+  ctx.fillStyle = s.stripes;
+  for (let x = -8.2; x < 10; x += 4.4) ctx.fillRect(x, -3, 1.7, bodyH);
+  ctx.restore();
+}
+
+/* La rangée de boutons d'un haut de pyjama. */
+function drawButtons(s) {
+  ctx.fillStyle = s.buttons;
+  for (const y of [6.5, 10.5]) {
+    ctx.beginPath();
+    ctx.arc(0, y, 1, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 /* Le M de Mistral : cinq colonnes de cases, une couleur par ligne, du jaune en
@@ -2358,45 +2585,65 @@ function drawParticles() {
   ctx.globalAlpha = 1;
 }
 
-/* Le bouton de fin de partie. Il ne répond qu'après un court délai : sinon le
-   clic parti trop vite relance la partie avant qu'on ait pu lire son score. */
-const BTN = { w: 216, h: 52 };
-const BTN_ARM = 48;              // frames avant que le bouton s'arme
+/* Les boutons de fin de partie. Ils ne répondent qu'après un court délai :
+   sinon le clic parti trop vite agit avant qu'on ait pu lire son score. */
+const BTN = { h: 52, gap: 12 };
+const BTN_ARM = 48;              // frames avant que les boutons s'arment
 
-let replayBtn = null;            // rect cliquable, en coordonnées VIEW
+let panelBtns = {};              // { clé: rect }, en coordonnées VIEW
 
-function drawPanelButton(label, cy) {
+function drawPanelButtons(buttons, cy) {
+  panelBtns = {};
   const armed = endTimer >= BTN_ARM;
-  const x = VIEW.w / 2 - BTN.w / 2;
+  const span = buttons.reduce((w, b) => w + b.w, 0) + (buttons.length - 1) * BTN.gap;
   const y = cy - BTN.h / 2;
-  replayBtn = armed ? { x, y, w: BTN.w, h: BTN.h } : null;
+  let x = VIEW.w / 2 - span / 2;
 
-  const pulse = 0.34 + Math.sin(frames * 0.07) * 0.1;
-  ctx.fillStyle = armed ? `rgba(255,178,122,${pulse})` : 'rgba(255,178,122,.1)';
-  roundRect(x, y, BTN.w, BTN.h, 26);
-  ctx.fill();
-  ctx.strokeStyle = armed ? '#ffb27a' : 'rgba(255,178,122,.3)';
-  ctx.lineWidth = 2;
-  roundRect(x, y, BTN.w, BTN.h, 26);
-  ctx.stroke();
+  for (const b of buttons) {
+    if (armed) panelBtns[b.key] = { x, y, w: b.w, h: BTN.h };
+    const lead = b.lead !== false;                 // le bouton principal pulse
+    const pulse = 0.34 + Math.sin(frames * 0.07) * 0.1;
+    const tint = lead ? pulse : 0.12;
+
+    ctx.fillStyle = armed ? `rgba(255,178,122,${tint})` : 'rgba(255,178,122,.08)';
+    roundRect(x, y, b.w, BTN.h, 26);
+    ctx.fill();
+    ctx.strokeStyle = armed
+      ? (lead ? '#ffb27a' : 'rgba(255,178,122,.55)')
+      : 'rgba(255,178,122,.28)';
+    ctx.lineWidth = lead ? 2 : 1.5;
+    roundRect(x, y, b.w, BTN.h, 26);
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${lead ? 19 : 15}px ui-rounded, system-ui, sans-serif`;
+    ctx.fillStyle = armed ? (lead ? '#fff6ec' : 'rgba(253,246,239,.85)') : 'rgba(253,246,239,.4)';
+    ctx.fillText(b.label, x + b.w / 2, y + BTN.h / 2 + 1);
+
+    x += b.w + BTN.gap;
+  }
 
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = 'bold 19px ui-rounded, system-ui, sans-serif';
-  ctx.fillStyle = armed ? '#fff6ec' : 'rgba(253,246,239,.4)';
-  ctx.fillText(label, VIEW.w / 2, y + BTN.h / 2 + 1);
-
   ctx.font = '12px ui-rounded, system-ui, sans-serif';
   ctx.fillStyle = 'rgba(253,246,239,.55)';
-  ctx.fillText(armed ? 'ou appuie sur R' : 'regarde ton score…', VIEW.w / 2, y + BTN.h + 17);
+  ctx.fillText(armed ? 'ou R pour relancer · T pour les tenues' : 'regarde ton score…',
+    VIEW.w / 2, y + BTN.h + 17);
+}
+
+/* Ce qui a été débloqué pendant cette partie, à afficher sur l'écran de fin :
+   le toast passe sous le panneau et personne ne le voit. */
+function unlockLines() {
+  return unlockedThisRun.map((id) => [`🎉 SKIN DÉBLOQUÉ : ${SKIN[id].name}`, 'unlock']);
 }
 
 /* ------------------------------------------------- le sélecteur de skins
 
-   Trois cartes sur l'écran titre, chacune montrant le vrai personnage dans sa
-   tenue. Les verrouillées affichent ce qu'il reste à faire pour les ouvrir. */
+   Une carte par tenue sur l'écran titre, chacune montrant le vrai personnage
+   dedans. Les verrouillées affichent ce qu'il reste à faire pour les ouvrir.
+   Au-delà de quatre, les cartes passent à la ligne. */
 
-const CARD = { w: 100, h: 126, gap: 13 };
+const CARD = { w: 100, h: 108, gap: 12, perRow: 4 };
 
 let skinCards = [];      // rects cliquables, en coordonnées VIEW
 
@@ -2418,53 +2665,73 @@ function drawWrapped(text, cx, y, maxW, lineH) {
   lines.forEach((line, i) => ctx.fillText(line, cx, y + i * lineH));
 }
 
+/* Les tenues découpées en rangées d'au plus CARD.perRow, la dernière rangée
+   centrée sur ce qu'il lui reste. */
+function skinRows() {
+  const rows = [];
+  for (let i = 0; i < SKINS.length; i += CARD.perRow) rows.push(SKINS.slice(i, i + CARD.perRow));
+  return rows;
+}
+
+function skinPickerHeight() {
+  const rows = skinRows().length;
+  return rows * CARD.h + (rows - 1) * CARD.gap;
+}
+
 function drawSkinPicker(cy) {
   skinCards = [];
-  const span = SKINS.length * CARD.w + (SKINS.length - 1) * CARD.gap;
-  const top = cy - CARD.h / 2;
+  const rows = skinRows();
+  const first = cy - skinPickerHeight() / 2;
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = '11px ui-rounded, system-ui, sans-serif';
   ctx.fillStyle = 'rgba(253,246,239,.5)';
-  ctx.fillText('LA TENUE — clique une carte, ou 1 / 2 / 3', VIEW.w / 2, top - 15);
+  ctx.fillText(`LA TENUE — clique une carte, ou 1 → ${SKINS.length}`, VIEW.w / 2, first - 14);
 
-  SKINS.forEach((s, i) => {
-    const x = VIEW.w / 2 - span / 2 + i * (CARD.w + CARD.gap);
-    const open = unlocked.has(s.id);
-    const worn = skin === s.id;
-    skinCards.push({ id: s.id, x, y: top, w: CARD.w, h: CARD.h, open });
-
-    ctx.fillStyle = worn ? 'rgba(255,178,122,.2)' : 'rgba(255,255,255,.05)';
-    roundRect(x, top, CARD.w, CARD.h, 14);
-    ctx.fill();
-    ctx.strokeStyle = worn ? '#ffb27a' : 'rgba(255,255,255,.15)';
-    ctx.lineWidth = worn ? 2 : 1;
-    roundRect(x, top, CARD.w, CARD.h, 14);
-    ctx.stroke();
-
-    // le personnage lui-même, pas une vignette dessinée à part
-    ctx.save();
-    ctx.translate(x + CARD.w / 2, top + 52);
-    ctx.scale(1.3, 1.3);
-    ctx.globalAlpha = open ? 1 : 0.25;
-    drawAlexandre(s.id, { rising: worn });
-    ctx.restore();
-    ctx.globalAlpha = 1;
-
-    ctx.font = 'bold 11px ui-rounded, system-ui, sans-serif';
-    ctx.fillStyle = open ? '#fdf6ef' : 'rgba(253,246,239,.45)';
-    ctx.fillText(s.name, x + CARD.w / 2, top + 94);
-
-    ctx.font = '9px ui-rounded, system-ui, sans-serif';
-    if (open) {
-      ctx.fillStyle = worn ? '#ffb27a' : 'rgba(253,246,239,.45)';
-      drawWrapped(worn ? 'portée' : s.desc, x + CARD.w / 2, top + 107, CARD.w - 12, 10);
-    } else {
-      ctx.fillStyle = 'rgba(255,178,122,.85)';
-      drawWrapped(`🔒 ${s.need}`, x + CARD.w / 2, top + 107, CARD.w - 12, 10);
-    }
+  rows.forEach((row, r) => {
+    const span = row.length * CARD.w + (row.length - 1) * CARD.gap;
+    const top = first + r * (CARD.h + CARD.gap);
+    row.forEach((s, i) => drawSkinCard(s, VIEW.w / 2 - span / 2 + i * (CARD.w + CARD.gap), top));
   });
+}
+
+function drawSkinCard(s, x, top) {
+  const open = unlocked.has(s.id);
+  const worn = skin === s.id;
+  skinCards.push({ id: s.id, x, y: top, w: CARD.w, h: CARD.h, open });
+
+  ctx.fillStyle = worn ? 'rgba(255,178,122,.2)' : 'rgba(255,255,255,.05)';
+  roundRect(x, top, CARD.w, CARD.h, 14);
+  ctx.fill();
+  ctx.strokeStyle = worn ? '#ffb27a' : 'rgba(255,255,255,.15)';
+  ctx.lineWidth = worn ? 2 : 1;
+  roundRect(x, top, CARD.w, CARD.h, 14);
+  ctx.stroke();
+
+  // le personnage lui-même, pas une vignette dessinée à part
+  ctx.save();
+  ctx.translate(x + CARD.w / 2, top + 44);
+  ctx.scale(1.12, 1.12);
+  ctx.globalAlpha = open ? 1 : 0.25;
+  drawAlexandre(s.id, { rising: worn });
+  ctx.restore();
+  ctx.globalAlpha = 1;
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 11px ui-rounded, system-ui, sans-serif';
+  ctx.fillStyle = open ? '#fdf6ef' : 'rgba(253,246,239,.45)';
+  ctx.fillText(s.name, x + CARD.w / 2, top + 80);
+
+  ctx.font = '9px ui-rounded, system-ui, sans-serif';
+  if (open) {
+    ctx.fillStyle = worn ? '#ffb27a' : 'rgba(253,246,239,.45)';
+    drawWrapped(worn ? 'portée' : s.desc, x + CARD.w / 2, top + 92, CARD.w - 12, 10);
+  } else {
+    ctx.fillStyle = 'rgba(255,178,122,.85)';
+    drawWrapped(`🔒 ${s.need}`, x + CARD.w / 2, top + 92, CARD.w - 12, 10);
+  }
 }
 
 function skinCardAt(event) {
@@ -2481,6 +2748,7 @@ function panel(lines, { dim = 0.72, align = 'center', button = null } = {}) {
   const styleOf = (line) => (Array.isArray(line) ? line[1] : 'body');
   const buttonH = button ? BTN.h + 40 : 0;
   const blockH = lines.reduce((h, line) => h + (styleOf(line) === 'title' ? 58 : 26), 0) + buttonH;
+  const wide = Math.max(180, Math.min(228, VIEW.w - 176));   // largeur du bouton principal
   let y = { bottom: VIEW.h - blockH - 46, top: 54 }[align] ?? VIEW.h / 2 - blockH / 2;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -2496,6 +2764,9 @@ function panel(lines, { dim = 0.72, align = 'center', button = null } = {}) {
     } else if (style === 'dim') {
       ctx.font = '13px ui-rounded, system-ui, sans-serif';
       ctx.fillStyle = 'rgba(253,246,239,.6)';
+    } else if (style === 'unlock') {
+      ctx.font = 'bold 16px ui-rounded, system-ui, sans-serif';
+      ctx.fillStyle = '#ffd166';
     } else {
       ctx.font = '15px ui-rounded, system-ui, sans-serif';
       ctx.fillStyle = '#e7dbf0';
@@ -2504,7 +2775,12 @@ function panel(lines, { dim = 0.72, align = 'center', button = null } = {}) {
     y += style === 'title' ? 46 : 26;
   }
 
-  if (button) drawPanelButton(button, y + BTN.h / 2 + 4);
+  if (button) {
+    drawPanelButtons([
+      { key: 'replay', label: button, w: wide },
+      { key: 'skins', label: 'TENUES', w: 132, lead: false },
+    ], y + BTN.h / 2 + 4);
+  }
 }
 
 function draw() {
@@ -2537,7 +2813,7 @@ function draw() {
   const taken = MAX_HP - player.hp;
   const hits = `${taken} coup${taken === 1 ? '' : 's'} pris`;
 
-  replayBtn = null;   // seuls les écrans de fin en posent un
+  panelBtns = {};     // seuls les écrans de fin en posent
   skinCards = [];     // idem : seul l'écran titre en pose
 
   if (state === 'title') {
@@ -2552,7 +2828,9 @@ function draw() {
       '',
       ['← → ou A / D pour te diriger · il rebondit tout seul', 'dim'],
     ], { align: 'top' });
-    drawSkinPicker(VIEW.h - 168);
+    // Le sélecteur est calé au-dessus de l'invite : deux rangées de cartes
+    // mangent le bas de l'écran, alors sa hauteur commande la position.
+    drawSkinPicker(VIEW.h - 84 - skinPickerHeight() / 2);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = 'bold 24px ui-rounded, system-ui, sans-serif';
@@ -2574,6 +2852,7 @@ function draw() {
       [`${climbed} m grimpés · record ${best} m`, 'body'],
       '',
       'Sabrina attend toujours.',
+      ...unlockLines(),
     ], { button: 'RÉESSAYER' });
   } else if (state === 'win') {
     panel([
@@ -2581,6 +2860,7 @@ function draw() {
       'Alexandre rejoint Sabrina.',
       'Elle aussi, en fait, aimait les lunettes.',
       [`${climbed} m grimpés · ${hits}`, 'dim'],
+      ...unlockLines(),
     ], { dim: 0.4, align: 'bottom', button: 'REJOUER' });
   }
 }
@@ -2667,11 +2947,19 @@ function pointerPos(event) {
   };
 }
 
-function hitsReplay(event) {
-  if (!replayBtn) return false;
+/* Quel bouton de fin de partie a été touché, s'il y en a un. */
+function panelBtnAt(event) {
   const { x, y } = pointerPos(event);
-  return x >= replayBtn.x && x <= replayBtn.x + replayBtn.w
-    && y >= replayBtn.y && y <= replayBtn.y + replayBtn.h;
+  return Object.keys(panelBtns).find((key) => {
+    const b = panelBtns[key];
+    return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+  }) || null;
+}
+
+/* Retour au hall : c'est là que vivent les tenues. */
+function toTitle() {
+  reset();
+  state = 'title';
 }
 
 window.addEventListener('keydown', (event) => {
@@ -2689,11 +2977,14 @@ window.addEventListener('keydown', (event) => {
     return;
   }
   if (event.code === 'KeyR') { start(); return; }
-  // Sur le titre, 1 / 2 / 3 changent de tenue au lieu de lancer la partie.
+  // T comme tenue : le hall des skins, depuis n'importe où.
+  if (event.code === 'KeyT') { toTitle(); return; }
+  // Sur le titre, les chiffres changent de tenue au lieu de lancer la partie.
   if (state === 'title') {
-    const slot = ['Digit1', 'Digit2', 'Digit3'].indexOf(event.code);
-    if (slot >= 0) {
-      if (SKINS[slot]) pickSkin(SKINS[slot].id);
+    const digit = /^Digit([1-9])$/.exec(event.code);
+    if (digit) {
+      const s = SKINS[Number(digit[1]) - 1];
+      if (s) pickSkin(s.id);
       return;
     }
   }
@@ -2714,7 +3005,9 @@ canvas.addEventListener('pointerdown', (event) => {
   canvas.focus();
   if (state === 'downed' || state === 'cat' || state === 'wheel') return;  // se résolvent seuls
   if (state === 'dead' || state === 'win') {
-    if (hitsReplay(event)) start();     // le reste de l'écran ne relance rien
+    const hit = panelBtnAt(event);      // le reste de l'écran ne fait rien
+    if (hit === 'replay') start();
+    else if (hit === 'skins') toTitle();
     return;
   }
   if (state === 'title') {
