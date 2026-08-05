@@ -2094,14 +2094,48 @@ function drawParticles() {
   ctx.globalAlpha = 1;
 }
 
+/* Le bouton de fin de partie. Il ne répond qu'après un court délai : sinon le
+   clic parti trop vite relance la partie avant qu'on ait pu lire son score. */
+const BTN = { w: 216, h: 52 };
+const BTN_ARM = 48;              // frames avant que le bouton s'arme
+
+let replayBtn = null;            // rect cliquable, en coordonnées VIEW
+
+function drawPanelButton(label, cy) {
+  const armed = endTimer >= BTN_ARM;
+  const x = VIEW.w / 2 - BTN.w / 2;
+  const y = cy - BTN.h / 2;
+  replayBtn = armed ? { x, y, w: BTN.w, h: BTN.h } : null;
+
+  const pulse = 0.34 + Math.sin(frames * 0.07) * 0.1;
+  ctx.fillStyle = armed ? `rgba(255,178,122,${pulse})` : 'rgba(255,178,122,.1)';
+  roundRect(x, y, BTN.w, BTN.h, 26);
+  ctx.fill();
+  ctx.strokeStyle = armed ? '#ffb27a' : 'rgba(255,178,122,.3)';
+  ctx.lineWidth = 2;
+  roundRect(x, y, BTN.w, BTN.h, 26);
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 19px ui-rounded, system-ui, sans-serif';
+  ctx.fillStyle = armed ? '#fff6ec' : 'rgba(253,246,239,.4)';
+  ctx.fillText(label, VIEW.w / 2, y + BTN.h / 2 + 1);
+
+  ctx.font = '12px ui-rounded, system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(253,246,239,.55)';
+  ctx.fillText(armed ? 'ou appuie sur R' : 'regarde ton score…', VIEW.w / 2, y + BTN.h + 17);
+}
+
 /* Overlay text. `align: 'bottom'` and a lighter `dim` keep the summit reunion
    visible behind the winning message. */
-function panel(lines, { dim = 0.72, align = 'center' } = {}) {
+function panel(lines, { dim = 0.72, align = 'center', button = null } = {}) {
   ctx.fillStyle = `rgba(12, 7, 18, ${dim})`;
   ctx.fillRect(0, 0, VIEW.w, VIEW.h);
 
   const styleOf = (line) => (Array.isArray(line) ? line[1] : 'body');
-  const blockH = lines.reduce((h, line) => h + (styleOf(line) === 'title' ? 58 : 26), 0);
+  const buttonH = button ? BTN.h + 40 : 0;
+  const blockH = lines.reduce((h, line) => h + (styleOf(line) === 'title' ? 58 : 26), 0) + buttonH;
   let y = align === 'bottom' ? VIEW.h - blockH - 46 : VIEW.h / 2 - blockH / 2;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -2124,6 +2158,8 @@ function panel(lines, { dim = 0.72, align = 'center' } = {}) {
     ctx.fillText(text, VIEW.w / 2, y);
     y += style === 'title' ? 46 : 26;
   }
+
+  if (button) drawPanelButton(button, y + BTN.h / 2 + 4);
 }
 
 function draw() {
@@ -2156,6 +2192,8 @@ function draw() {
   const taken = MAX_HP - player.hp;
   const hits = `${taken} coup${taken === 1 ? '' : 's'} pris`;
 
+  replayBtn = null;   // seuls les écrans de fin en posent un
+
   if (state === 'title') {
     panel([
       ['ALEXANDRE', 'title'],
@@ -2166,7 +2204,7 @@ function draw() {
       ['Ramasse les canettes, les coupe-ongles, les codes Uber Eats.', 'dim'],
       '',
       ['← → ou A / D pour te diriger · il rebondit tout seul', 'dim'],
-      ['appuie sur une touche, ou tape, pour commencer', 'big'],
+      ['appuie ou tape pour commencer', 'big'],
     ]);
   } else if (state === 'pause') {
     panel([['PAUSE', 'big'], ['appuie sur P pour reprendre', 'dim']]);
@@ -2184,17 +2222,14 @@ function draw() {
       [`${climbed} m grimpés · record ${best} m`, 'body'],
       '',
       'Sabrina attend toujours.',
-      ['appuie sur R ou tape pour réessayer', 'big'],
-    ]);
+    ], { button: 'RÉESSAYER' });
   } else if (state === 'win') {
     panel([
       ['SAUVÉE ! 👑', 'title'],
       'Alexandre rejoint Sabrina.',
       'Elle aussi, en fait, aimait les lunettes.',
       [`${climbed} m grimpés · ${hits}`, 'dim'],
-      '',
-      ['appuie sur R ou tape pour une autre ascension', 'big'],
-    ], { dim: 0.4, align: 'bottom' });
+    ], { dim: 0.4, align: 'bottom', button: 'REJOUER' });
   }
 }
 
@@ -2271,9 +2306,20 @@ function start() {
   state = 'play';
 }
 
-function onAction() {
-  if (state === 'title') start();
-  else if (state === 'dead' || state === 'win') start();
+/* Coordonnées VIEW d'un pointeur, quelle que soit la taille affichée du canvas. */
+function pointerPos(event) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((event.clientX - rect.left) / rect.width) * VIEW.w,
+    y: ((event.clientY - rect.top) / rect.height) * VIEW.h,
+  };
+}
+
+function hitsReplay(event) {
+  if (!replayBtn) return false;
+  const { x, y } = pointerPos(event);
+  return x >= replayBtn.x && x <= replayBtn.x + replayBtn.w
+    && y >= replayBtn.y && y <= replayBtn.y + replayBtn.h;
 }
 
 window.addEventListener('keydown', (event) => {
@@ -2291,7 +2337,9 @@ window.addEventListener('keydown', (event) => {
     return;
   }
   if (event.code === 'KeyR') { start(); return; }
-  if (state === 'title' || state === 'dead' || state === 'win') onAction();
+  // En fin de partie il faut viser le bouton (ou R) : n'importe quelle touche
+  // relancerait avant qu'on ait lu son score.
+  if (state === 'title') start();
 });
 
 window.addEventListener('keyup', (event) => keys.delete(event.code));
@@ -2305,12 +2353,15 @@ function pointerDir(event) {
 canvas.addEventListener('pointerdown', (event) => {
   canvas.focus();
   if (state === 'downed' || state === 'cat' || state === 'wheel') return;  // se résolvent seuls
-  if (state !== 'play' && state !== 'pause') { onAction(); return; }
+  if (state === 'dead' || state === 'win') {
+    if (hitsReplay(event)) start();     // le reste de l'écran ne relance rien
+    return;
+  }
+  if (state === 'title') { start(); return; }
   // With noodles in hand, a tap near a platform reels him in instead of steering.
   if (state === 'play' && player.noodles > 0 && !player.grapple) {
-    const rect = canvas.getBoundingClientRect();
-    const wx = ((event.clientX - rect.left) / rect.width) * VIEW.w;
-    const wy = ((event.clientY - rect.top) / rect.height) * VIEW.h + camY;
+    const { x: wx, y: py } = pointerPos(event);
+    const wy = py + camY;
     const plat = platformNear(wx, wy);
     if (plat) {
       startGrapple(plat, wx);

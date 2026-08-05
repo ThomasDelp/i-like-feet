@@ -17,6 +17,7 @@ his three Red Bulls (the HP bar is a row of cans).
 | <kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd> | Steer. He bounces on his own. |
 | <kbd>P</kbd> · <kbd>R</kbd> · <kbd>M</kbd> | Pause · restart · mute |
 | Touch | Hold the left or right half of the canvas |
+| Game over / win | Hit the on-canvas **Rejouer** button (armed after ~0.8 s) or <kbd>R</kbd> — a stray tap anywhere else no longer wipes the score off the screen |
 
 ### Lives and checkpoints
 
