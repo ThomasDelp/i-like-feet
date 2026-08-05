@@ -316,11 +316,15 @@ const sfx = {
 
 const keys = new Set();
 let touchDir = 0;
-// Le tap qui saute, distingué du maintien qui dirige : moins de TAP_TIME ms et
-// moins de TAP_SLOP px de glissement.
+// Au doigt, le maintien dirige et le double tap fait le salto. Un tap, c'est
+// moins de TAP_TIME ms sans glisser de plus de TAP_SLOP px ; deux taps espacés de
+// moins de DOUBLE_TAP ms, c'est le salto. Un tap seul ne saute pas : en pleine
+// montée, on tape sans arrêt pour se diriger.
 const TAP_TIME = 180;
 const TAP_SLOP = 12;
-let tap = null;
+const DOUBLE_TAP = 320;
+let tap = null;        // le contact en cours, s'il peut encore être un tap
+let lastTap = 0;       // l'instant du dernier tap abouti
 
 function steer() {
   let dir = touchDir;
@@ -338,6 +342,7 @@ let lives, checkpoint, restPlaced, downTimer, deathReason;
 let catTimer, catFrom, catTarget, catThrow;
 let fries, wheelTimer, wheelPick, wheelStep, cracks, crackT;
 let rings;   // les anneaux de poussière laissés par les saltos
+let pauseAsk = false;   // le menu de pause demande-t-il confirmation pour l'accueil ?
 
 function reset() {
   groundY = 0;
@@ -380,6 +385,7 @@ function reset() {
   cracks = [];
   crackT = 0;
   rings = [];
+  pauseAsk = false;
   shake = 0;
   frames = 0;
   razorTimer = 140;
@@ -2638,8 +2644,9 @@ function drawHud() {
     ctx.fillText(`🍜 ×${player.noodles} — clique une passerelle`, 14, 46 + bars.length * 10);
   }
 
-  // En plein écran, le bouton « ? » flotte dans le coin : le score se décale.
-  const right = VIEW.w - (document.body.classList.contains('full-bleed') ? 56 : 16);
+  // Les deux boutons du coin — aide et pause — flottent par-dessus le canvas :
+  // le score se décale pour ne pas passer dessous.
+  const right = VIEW.w - 96;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = ink;
@@ -2920,43 +2927,47 @@ const BTN_ARM = 48;              // frames avant que les boutons s'arment
 
 let panelBtns = {};              // { clé: rect }, en coordonnées VIEW
 
-function drawPanelButtons(buttons, cy) {
+function drawPanelButtons(buttons, cy, armed, hint) {
   panelBtns = {};
-  const armed = endTimer >= BTN_ARM;
+  // À l'étroit — un téléphone de 320 px — toute la rangée rétrécit d'un bloc
+  // plutôt que de sortir de l'écran.
   const span = buttons.reduce((w, b) => w + b.w, 0) + (buttons.length - 1) * BTN.gap;
+  const room = VIEW.w - 24;
+  const k = span > room ? room / span : 1;
   const y = cy - BTN.h / 2;
-  let x = VIEW.w / 2 - span / 2;
+  let x = VIEW.w / 2 - (span * k) / 2;
 
   for (const b of buttons) {
-    if (armed) panelBtns[b.key] = { x, y, w: b.w, h: BTN.h };
+    const w = b.w * k;
+    if (armed) panelBtns[b.key] = { x, y, w, h: BTN.h };
     const lead = b.lead !== false;                 // le bouton principal pulse
     const pulse = 0.34 + Math.sin(frames * 0.07) * 0.1;
     const tint = lead ? pulse : 0.12;
 
     ctx.fillStyle = armed ? `rgba(255,178,122,${tint})` : 'rgba(255,178,122,.08)';
-    roundRect(x, y, b.w, BTN.h, 26);
+    roundRect(x, y, w, BTN.h, 26);
     ctx.fill();
     ctx.strokeStyle = armed
       ? (lead ? '#ffb27a' : 'rgba(255,178,122,.55)')
       : 'rgba(255,178,122,.28)';
     ctx.lineWidth = lead ? 2 : 1.5;
-    roundRect(x, y, b.w, BTN.h, 26);
+    roundRect(x, y, w, BTN.h, 26);
     ctx.stroke();
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `bold ${lead ? 19 : 15}px ui-rounded, system-ui, sans-serif`;
+    ctx.font = `bold ${Math.max(12, (lead ? 19 : 15) * k)}px ui-rounded, system-ui, sans-serif`;
     ctx.fillStyle = armed ? (lead ? '#fff6ec' : 'rgba(253,246,239,.85)') : 'rgba(253,246,239,.4)';
-    ctx.fillText(b.label, x + b.w / 2, y + BTN.h / 2 + 1);
+    ctx.fillText(b.label, x + w / 2, y + BTN.h / 2 + 1);
 
-    x += b.w + BTN.gap;
+    x += w + BTN.gap;
   }
 
+  if (!hint) return;
   ctx.textAlign = 'center';
   ctx.font = '12px ui-rounded, system-ui, sans-serif';
   ctx.fillStyle = 'rgba(253,246,239,.55)';
-  ctx.fillText(armed ? 'ou R pour relancer · T pour les tenues' : 'regarde ton score…',
-    VIEW.w / 2, y + BTN.h + 17);
+  ctx.fillText(hint, VIEW.w / 2, y + BTN.h + 17);
 }
 
 /* Ce qui a été débloqué pendant cette partie, à afficher sur l'écran de fin :
@@ -3103,13 +3114,20 @@ function panelHeight(lines) {
 
 /* Overlay text. `align: 'bottom'` and a lighter `dim` keep the summit reunion
    visible behind the winning message. */
-function panel(lines, { dim = 0.72, align = 'center', button = null } = {}) {
+function panel(lines, { dim = 0.72, align = 'center', button = null, buttons = null,
+  armed = null, hint = null } = {}) {
   ctx.fillStyle = `rgba(12, 7, 18, ${dim})`;
   ctx.fillRect(0, 0, VIEW.w, VIEW.h);
 
-  const buttonH = button ? BTN.h + 40 : 0;
-  const blockH = panelHeight(lines) + buttonH;
+  // `button` est le raccourci des écrans de fin : le bouton principal, plus le
+  // passage aux tenues. `buttons` sert pour une rangée sur mesure.
   const wide = Math.max(180, Math.min(228, VIEW.w - 176));   // largeur du bouton principal
+  const row = buttons || (button ? [
+    { key: 'replay', label: button, w: wide },
+    { key: 'skins', label: 'TENUES', w: 132, lead: false },
+  ] : null);
+  const buttonH = row ? BTN.h + 40 : 0;
+  const blockH = panelHeight(lines) + buttonH;
   let y = { bottom: VIEW.h - blockH - 46, top: 54 }[align] ?? VIEW.h / 2 - blockH / 2;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -3136,11 +3154,12 @@ function panel(lines, { dim = 0.72, align = 'center', button = null } = {}) {
     y += style === 'title' ? 46 : 26;
   }
 
-  if (button) {
-    drawPanelButtons([
-      { key: 'replay', label: button, w: wide },
-      { key: 'skins', label: 'TENUES', w: 132, lead: false },
-    ], y + BTN.h / 2 + 4);
+  if (row) {
+    // Les écrans de fin arment leurs boutons après un délai — le clic parti trop
+    // vite effacerait le score. Une pause, elle, répond tout de suite.
+    const live = armed === null ? endTimer >= BTN_ARM : armed;
+    drawPanelButtons(row, y + BTN.h / 2 + 4, live,
+      hint || (live ? 'ou R pour relancer · T pour les tenues' : 'regarde ton score…'));
   }
 }
 
@@ -3195,7 +3214,7 @@ function draw() {
       ]),
       ...(VIEW.h < 480 ? [] : [
         ['← → ou A / D pour te diriger · il rebondit tout seul', 'dim'],
-        ['espace, ↑ ou un tap : un salto en l’air, un par rebond', 'dim'],
+        ['espace, ↑ ou un double tap : un salto arrière, un par rebond', 'dim'],
       ]),
     ];
     panel(lines, { align: 'top' });
@@ -3212,8 +3231,28 @@ function draw() {
     ctx.font = `bold ${tight ? 18 : 24}px ui-rounded, system-ui, sans-serif`;
     ctx.fillStyle = '#fdf6ef';
     ctx.fillText('appuie ou tape pour commencer', VIEW.w / 2, VIEW.h - prompt);
+  } else if (state === 'pause' && pauseAsk) {
+    panel([
+      ['RETOUR À L’ACCUEIL ?', 'big'],
+      'La partie en cours sera perdue.',
+      [`${climbed} m grimpés, et Sabrina attend encore.`, 'dim'],
+    ], {
+      buttons: [
+        { key: 'homeYes', label: 'OUI, ACCUEIL', w: 186 },
+        { key: 'homeNo', label: 'ANNULER', w: 132, lead: false },
+      ],
+      armed: true,
+      hint: 'ou Échap pour annuler',
+    });
   } else if (state === 'pause') {
-    panel([['PAUSE', 'big'], ['appuie sur P pour reprendre', 'dim']]);
+    panel([['PAUSE', 'big']], {
+      buttons: [
+        { key: 'resume', label: 'CONTINUER', w: 186 },
+        { key: 'home', label: 'ACCUEIL', w: 132, lead: false },
+      ],
+      armed: true,
+      hint: 'ou P pour reprendre',
+    });
   } else if (state === 'downed') {
     panel([
       [deathReason === 'fall' ? 'Il est tombé.' : 'Les rasoirs l’ont eu.', 'big'],
@@ -3238,6 +3277,13 @@ function draw() {
       [`${climbed} m grimpés · ${hits}`, 'dim'],
       ...unlockLines(),
     ], { dim: 0.4, align: 'bottom', button: 'REJOUER' });
+  }
+
+  // Le bouton de pause ne s'affiche que s'il y a une partie à interrompre. On
+  // n'écrit dans le DOM que quand ça change.
+  if (pauseBtn) {
+    const useful = state !== 'title';
+    if (pauseBtn.hidden === useful) pauseBtn.hidden = !useful;
   }
 }
 
@@ -3339,6 +3385,20 @@ function toTitle() {
   state = 'title';
 }
 
+/* La pause, et sa sortie. Le menu part toujours sur son premier écran : on ne
+   reprend pas une partie sur une question posée il y a dix minutes. */
+function pause() {
+  if (state !== 'play') return;
+  pauseAsk = false;
+  state = 'pause';
+}
+
+function resume() {
+  if (state !== 'pause') return;
+  pauseAsk = false;
+  state = 'play';
+}
+
 window.addEventListener('keydown', (event) => {
   // L'aide ouverte, le jeu ne reçoit plus rien : les flèches font défiler la
   // légende et Échap referme.
@@ -3357,8 +3417,13 @@ window.addEventListener('keydown', (event) => {
     return;
   }
   if (event.code === 'KeyP') {
-    if (state === 'play') state = 'pause';
-    else if (state === 'pause') state = 'play';
+    if (state === 'play') pause();
+    else if (state === 'pause') resume();
+    return;
+  }
+  // Échap annule la confirmation plutôt que de quitter d'un doigt trop vif.
+  if (event.code === 'Escape' && state === 'pause' && pauseAsk) {
+    pauseAsk = false;
     return;
   }
   if (event.code === 'KeyR') { start(); return; }
@@ -3383,7 +3448,7 @@ window.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('keyup', (event) => keys.delete(event.code));
-window.addEventListener('blur', () => { keys.clear(); touchDir = 0; tap = null; });
+window.addEventListener('blur', () => { keys.clear(); touchDir = 0; tap = null; lastTap = 0; });
 
 function pointerDir(event) {
   const rect = canvas.getBoundingClientRect();
@@ -3397,6 +3462,14 @@ canvas.addEventListener('pointerdown', (event) => {
     const hit = panelBtnAt(event);      // le reste de l'écran ne fait rien
     if (hit === 'replay') start();
     else if (hit === 'skins') toTitle();
+    return;
+  }
+  if (state === 'pause') {
+    const hit = panelBtnAt(event);
+    if (hit === 'resume') resume();
+    else if (hit === 'home') pauseAsk = true;
+    else if (hit === 'homeYes') toTitle();
+    else if (hit === 'homeNo') pauseAsk = false;
     return;
   }
   if (state === 'title') {
@@ -3432,7 +3505,15 @@ canvas.addEventListener('pointermove', (event) => {
   if (tap && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > TAP_SLOP) tap = null;
 });
 canvas.addEventListener('pointerup', () => {
-  if (tap && performance.now() - tap.at < TAP_TIME) airJump();
+  if (tap && performance.now() - tap.at < TAP_TIME) {
+    const now = performance.now();
+    if (now - lastTap < DOUBLE_TAP) {
+      airJump();
+      lastTap = 0;              // le troisième tap ne compte pas pour un second
+    } else {
+      lastTap = now;
+    }
+  }
   tap = null;
   touchDir = 0;
 });
@@ -3573,6 +3654,7 @@ function renderLegend() {
 
 const helpSheet = document.getElementById('help');
 const helpBtn = document.getElementById('helpOpen');
+const pauseBtn = document.getElementById('pauseOpen');
 let helpResume = false;   // la partie tournait-elle avant l'ouverture ?
 
 function helpIsOpen() {
@@ -3595,6 +3677,16 @@ function closeHelp() {
   if (helpResume && state === 'pause') state = 'play';
   helpResume = false;
   canvas.focus();
+}
+
+// Le bouton du coin : il met en pause, et ressort de la pause. Le reste des
+// choix — continuer, accueil — est dans le panneau, sur le canvas.
+if (pauseBtn) {
+  pauseBtn.addEventListener('click', () => {
+    if (state === 'play') pause();
+    else if (state === 'pause') resume();
+    canvas.focus();
+  });
 }
 
 if (helpSheet) {

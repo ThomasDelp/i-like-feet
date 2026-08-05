@@ -18,7 +18,8 @@ his three Red Bulls (the HP bar is a row of cans).
 | <kbd>Space</kbd> / <kbd>↑</kbd> / <kbd>W</kbd> | **Double jump** — one mid-air backflip, recharged on every bounce |
 | <kbd>P</kbd> · <kbd>R</kbd> · <kbd>M</kbd> | Pause · restart · mute |
 | <kbd>H</kbd> or the <kbd>?</kbd> button | The help sheet, over the game — it pauses the run |
-| Touch | Hold the left or right half to steer, **tap briefly** to flip |
+| Touch | Hold the left or right half to steer, **double-tap** to flip |
+| The <kbd>❙❙</kbd> button (or <kbd>P</kbd>) | Pause, with **Continuer** / **Accueil** — going home asks first |
 | <kbd>1</kbd> … <kbd>9</kbd> | Pick a skin, on the title screen — or click its card |
 | <kbd>T</kbd> | Back to the skin picker from anywhere — also a **Tenues** button on the end screens |
 | Game over / win | Hit the on-canvas **Rejouer** button (armed after ~0.8 s) or <kbd>R</kbd> — a stray tap anywhere else no longer wipes the score off the screen |
@@ -34,23 +35,38 @@ plus a dust ring that stays where he pushed off (`rings`, drawn under him and
 fading as it widens) and a downward burst. Two green chevrons in the HUD say
 whether it is still in hand.
 
-On touch, a press under `TAP_TIME` that never drifts past `TAP_SLOP` is a flip;
-anything longer is the steering hold it always was, and a tap near a platform
-still goes to the noodle grapple when he has one.
+On touch it takes a **double tap** — two presses under `TAP_TIME` that never
+drift past `TAP_SLOP`, less than `DOUBLE_TAP` apart. A single tap does nothing on
+purpose: climbing means tapping the sides constantly to steer, and every one of
+those would have burned the flip. Anything longer is the steering hold it always
+was, and a tap near a platform still goes to the noodle grapple when he has one.
+
+### Pause
+
+The round **❙❙** in the corner (or <kbd>P</kbd>) opens a two-choice panel drawn
+on the canvas, like the end screens: **CONTINUER** resumes, **ACCUEIL** asks
+*Retour à l'accueil ? La partie en cours sera perdue* before dropping the run —
+<kbd>Esc</kbd> or **ANNULER** backs out. `pause()` always opens on the first
+screen, so a run never resumes on a question asked ten minutes ago. `panel()`
+takes any button row now, and a row too wide for the screen shrinks as a block
+instead of running off the edge.
 
 ### Full screen and the help sheet
 
-On a phone (`max-width: 860px`, and tall enough to be portrait) the canvas takes
-the whole window at scale 1: the field is as wide as the device and a taller
-screen **reveals more tower** rather than zooming. `setupCanvas()` writes the new
-size into `VIEW`, and a rotation mid-run calls `refitWorld()` so platforms,
-bonuses and Alexandre are pulled back inside the new width. Desktop keeps the
-480 × 720 column, scaled by CSS.
+On a phone (`max-width: 860px`) the canvas takes the whole window at scale 1: the
+field is as wide as the device and a taller screen **reveals more tower** rather
+than zooming. The size comes from `visualViewport`, not `innerHeight`, so the
+strip under the browser toolbar does not become a gap. `setupCanvas()` writes it
+into `VIEW`, and a rotation mid-run calls `refitWorld()` so platforms, bonuses and
+Alexandre are pulled back inside the new width. Desktop keeps the 480 × 720
+column, scaled by CSS. On a short screen the title text sheds its hint lines and
+the skin picker squeezes its cards into whatever room is left.
 
 The legend used to sit beside the canvas; it is now a sheet over the game, opened
 by the round **?** in the corner (or <kbd>H</kbd>) and closed with ✕, <kbd>Esc</kbd>
 or a click on the veil. Opening it pauses a live run and closing it resumes —
-unless the pause was yours.
+unless the pause was yours. The HUD's altitude is inset to clear the two corner
+buttons.
 
 ### Skins
 

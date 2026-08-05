@@ -12,8 +12,13 @@
   <div class="stage">
     <canvas id="game" width="480" height="720" tabindex="0"
             aria-label="Jeu de plateformes vertical. Utilise les flèches gauche et droite pour grimper."></canvas>
-    <button class="help-open" id="helpOpen" aria-controls="help" aria-expanded="false"
-            title="Aide et légende (H)"><span aria-hidden="true">?</span><span class="sr">Aide et légende</span></button>
+    <div class="corner">
+      <button class="corner-btn" id="helpOpen" aria-controls="help" aria-expanded="false"
+              title="Aide et légende (H)"><span aria-hidden="true">?</span><span class="sr">Aide et légende</span></button>
+      <button class="corner-btn" id="pauseOpen" title="Pause (P)" hidden>
+        <span aria-hidden="true">❙❙</span><span class="sr">Pause</span>
+      </button>
+    </div>
   </div>
 
   <div class="sheet" id="help" hidden>
@@ -35,11 +40,14 @@
     </p>
     <ul>
       <li><kbd>←</kbd> <kbd>→</kbd> ou <kbd>A</kbd> <kbd>D</kbd> — se diriger (il rebondit tout seul)</li>
-      <li><kbd>M</kbd> — muet · <kbd>R</kbd> — recommencer · <kbd>P</kbd> — pause</li>
+      <li><kbd>M</kbd> — muet · <kbd>R</kbd> — recommencer</li>
+      <li><kbd>P</kbd> ou le bouton <kbd>❙❙</kbd> — <strong>pause</strong> : au choix
+        <strong>continuer</strong> ou revenir à l’<strong>accueil</strong>, qui demande confirmation</li>
       <li>Fin de partie : le bouton <strong>Rejouer</strong> (ou <kbd>R</kbd>) — le score reste affiché</li>
       <li><kbd>T</kbd> — retour aux <strong>tenues</strong>, à tout moment (aussi un bouton sur l’écran de fin)</li>
       <li><kbd>Espace</kbd> <kbd>↑</kbd> ou <kbd>W</kbd> — <strong>salto</strong> : un second saut en l’air, rechargé à chaque rebond</li>
-      <li>Au doigt : garde appuyé sur la moitié gauche ou droite pour diriger, <strong>tape brièvement</strong> pour le salto</li>
+      <li>Au doigt : garde appuyé sur la moitié gauche ou droite pour diriger,
+        <strong>double-tape</strong> pour le salto</li>
       <li><kbd>H</kbd> ou le bouton <kbd>?</kbd> — cette aide (le jeu se met en pause)</li>
     </ul>
 
@@ -120,7 +128,6 @@
       <dt><canvas class="swatch icon" data-meal="frites" role="img" aria-label="cornet de frites"></canvas></dt>
       <dd><strong>frites</strong> — il mange salement et en perd la moitié : chaque frite détruit un rasoir</dd>
     </dl>
-      <p class="back"><a href="./">← retour aux pieds</a></p>
     </aside>
   </div>
 

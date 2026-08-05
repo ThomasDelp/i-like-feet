@@ -76,13 +76,18 @@ body.full-bleed #game {
   box-shadow: none;
 }
 
-/* Le bouton d'aide, par-dessus le jeu, dans le coin du canvas. Il respecte les
-   encoches : en plein écran, ce coin est celui de l'écran. */
-.help-open {
+/* Les boutons du coin — aide et pause — par-dessus le jeu, calés sur le canvas.
+   Ils respectent les encoches : en plein écran, ce coin est celui de l'écran. */
+.corner {
   position: absolute;
   top: max(0.6rem, env(safe-area-inset-top));
   right: max(0.6rem, env(safe-area-inset-right));
   z-index: 20;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.corner-btn {
   width: 2.25rem;
   height: 2.25rem;
   padding: 0;
@@ -98,8 +103,9 @@ body.full-bleed #game {
   cursor: pointer;
 }
 
-.help-open:hover { border-color: var(--accent); color: var(--accent); }
-.help-open:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; }
+.corner-btn:hover { border-color: var(--accent); color: var(--accent); }
+.corner-btn:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; }
+#pauseOpen { font-size: 0.8rem; letter-spacing: 0.05em; }
 
 .sr {
   position: absolute;
@@ -230,9 +236,6 @@ kbd {
   font-family: ui-monospace, monospace;
   color: var(--ink);
 }
-
-.back { margin: 1.25rem 0 0; }
-.back a { color: var(--accent); }
 
 @media (max-height: 640px), (max-width: 860px) {
   body { gap: 1rem; padding: 0.75rem; }
