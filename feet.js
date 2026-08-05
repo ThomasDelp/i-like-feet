@@ -7,22 +7,15 @@ const canvas = document.getElementById('feet');
 const ctx = canvas.getContext('2d');
 
 const GLYPHS = ['🦶', '👣', '🦶🏽', '🦶🏿', '👣'];
+const COUNT = 36;             // la nuée, une bonne fois pour toutes
+const SPEED = 1.2;
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-const ui = {
-  count: document.getElementById('count'),
-  countOut: document.getElementById('countOut'),
-  speed: document.getElementById('speed'),
-  speedOut: document.getElementById('speedOut'),
-  stomp: document.getElementById('stomp'),
-};
 
 let width = 0;
 let height = 0;
 let feet = [];
-let speedScale = Number(ui.speed.value) / 10;
+let speedScale = reduceMotion ? 0.1 : SPEED;
 let paused = false;
-let settleTimer = null;
 
 const rand = (min, max) => min + Math.random() * (max - min);
 
@@ -42,11 +35,6 @@ function makeFoot(seeded = false) {
     wobbleRate: rand(0.008, 0.03),
     wobbleAmp: rand(0.4, 1.6),
   };
-}
-
-function setCount(n) {
-  while (feet.length > n) feet.pop();
-  while (feet.length < n) feet.push(makeFoot(true));
 }
 
 function resize() {
@@ -89,36 +77,6 @@ function draw() {
   ctx.globalAlpha = 1;
 }
 
-/* Shove every foot away from the middle of the screen. */
-function stomp() {
-  const cx = width / 2;
-  const cy = height / 2;
-  for (const foot of feet) {
-    const dx = foot.x - cx;
-    const dy = foot.y - cy;
-    const dist = Math.hypot(dx, dy) || 1;
-    const kick = 6 * foot.depth;
-    foot.vx += (dx / dist) * kick;
-    foot.vy += (dy / dist) * kick;
-    foot.spin += rand(-0.06, 0.06);
-  }
-  document.body.animate(
-    [{ transform: 'translateY(0)' }, { transform: 'translateY(6px)' }, { transform: 'translateY(0)' }],
-    { duration: 220, easing: 'ease-out' }
-  );
-  // Bleed the impulse back off so the swarm settles into its drift again.
-  clearInterval(settleTimer);
-  settleTimer = setInterval(() => {
-    let hot = false;
-    for (const foot of feet) {
-      foot.vx *= 0.92;
-      foot.vy = foot.vy * 0.92 - 0.03 * foot.depth;
-      if (Math.abs(foot.vx) > 0.5 || foot.vy > 0) hot = true;
-    }
-    if (!hot) clearInterval(settleTimer);
-  }, 40);
-}
-
 let last = performance.now();
 function frame(now) {
   const dt = Math.min((now - last) / 16.667, 4); // frames elapsed, clamped after tab switches
@@ -128,37 +86,13 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-ui.count.addEventListener('input', () => {
-  ui.countOut.value = ui.count.value;
-  setCount(Number(ui.count.value));
-});
-
-ui.speed.addEventListener('input', () => {
-  speedScale = Number(ui.speed.value) / 10;
-  ui.speedOut.value = `${speedScale.toFixed(1)}×`;
-});
-
-ui.stomp.addEventListener('click', stomp);
-
 window.addEventListener('keydown', (event) => {
-  if (event.code === 'Space' && event.target === document.body) {
-    event.preventDefault();
-    stomp();
-  } else if (event.key.toLowerCase() === 'p') {
-    paused = !paused;
-  }
+  if (event.key.toLowerCase() === 'p') paused = !paused;
 });
 
 window.addEventListener('resize', resize);
 
 resize();
-setCount(Number(ui.count.value));
-ui.speedOut.value = `${speedScale.toFixed(1)}×`;
-
-if (reduceMotion) {
-  speedScale = 0.1;
-  ui.speed.value = 1;
-  ui.speedOut.value = '0.1×';
-}
+feet = Array.from({ length: COUNT }, () => makeFoot(true));
 
 requestAnimationFrame(frame);

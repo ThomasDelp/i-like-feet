@@ -2,7 +2,8 @@
 
 Two pages, no build step, no dependencies.
 
-- **Landing page** — a canvas full of flying feet: https://thomasdelp.github.io/i-like-feet/
+- **Landing page** — a canvas full of flying feet (just the swarm and a link to
+  the game; <kbd>P</kbd> pauses it): https://thomasdelp.github.io/i-like-feet/
 - **The game** — *Alexandre & Sabrina, the Foot Princess*: https://thomasdelp.github.io/i-like-feet/game.html
 
 ## Alexandre & Sabrina, the Foot Princess
