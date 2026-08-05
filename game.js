@@ -951,25 +951,6 @@ function drawBackground() {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, VIEW.w, VIEW.h);
 
-  if (trans) {
-    // rayons qui tournent lentement autour du crâne
-    const cx = player.x;
-    const cy = player.y - camY;
-    ctx.save();
-    ctx.globalAlpha = 0.16 * (player.trans < 60 ? player.trans / 60 : 1);
-    ctx.fillStyle = '#fff6cd';
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2 + frames * 0.004;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.cos(a - 0.05) * 900, cy + Math.sin(a - 0.05) * 900);
-      ctx.lineTo(cx + Math.cos(a + 0.05) * 900, cy + Math.sin(a + 0.05) * 900);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-
   // Parallax feet, drifting and wrapping over a two-screen band.
   const band = VIEW.h * 2;
   for (const foot of backFeet) {
@@ -1619,25 +1600,33 @@ function drawPlayer() {
   }
 
   if (player.trans > 0) {
-    // Le crâne transcende : halo, pas de lunettes, yeux blancs incandescents.
-    const halo = ctx.createRadialGradient(0, -14, 2, 0, -14, 30);
-    halo.addColorStop(0, 'rgba(255,250,220,.75)');
-    halo.addColorStop(1, 'rgba(255,246,205,0)');
-    ctx.fillStyle = halo;
-    ctx.beginPath();
-    ctx.arc(0, -14, 30, 0, Math.PI * 2);
-    ctx.fill();
-
+    // Le crâne transcende : pas de lunettes, des yeux blancs et brillants — mais
+    // la lumière reste dans l'œil, rien n'en sort.
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.ellipse(-4.4, -12, 2.6, 3.1, 0, 0, Math.PI * 2);
-    ctx.ellipse(4.4, -12, 2.6, 3.1, 0, 0, Math.PI * 2);
+    ctx.ellipse(-4.4, -12, 3.2, 3.8, 0, 0, Math.PI * 2);
+    ctx.ellipse(4.4, -12, 3.2, 3.8, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = `rgba(255,255,255,${0.5 + Math.sin(frames * 0.15) * 0.3})`;
-    ctx.lineWidth = 2;
+
+    // l'éclat qui glisse dans l'œil, plus le petit point spéculaire
+    const sheen = 0.55 + Math.sin(frames * 0.12) * 0.25;
+    ctx.fillStyle = `rgba(255,252,235,${sheen})`;
     ctx.beginPath();
-    ctx.ellipse(-4.4, -12, 4.4, 5, 0, 0, Math.PI * 2);
-    ctx.ellipse(4.4, -12, 4.4, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(-4.4, -13.4, 2.2, 1.5, -0.4, 0, Math.PI * 2);
+    ctx.ellipse(4.4, -13.4, 2.2, 1.5, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.95)';
+    ctx.beginPath();
+    ctx.arc(-5.5, -13.6, 0.9, 0, Math.PI * 2);
+    ctx.arc(3.3, -13.6, 0.9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // un liseré nacré pour détacher l'œil du crâne, sans déborder
+    ctx.strokeStyle = 'rgba(226,208,150,.85)';
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.ellipse(-4.4, -12, 3.2, 3.8, 0, 0, Math.PI * 2);
+    ctx.ellipse(4.4, -12, 3.2, 3.8, 0, 0, Math.PI * 2);
     ctx.stroke();
   } else {
     // lunettes

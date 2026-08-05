@@ -60,10 +60,11 @@ included, then serves it.
 
 The rarest pickup (~0.35% of eligible platforms). His scalp turns so shiny it
 splits the world: the screen fractures along nine frozen crack lines, the theme
-flips to a cream-and-lavender transcendence with rays turning around his skull,
-**intermediate ledges** appear wherever a gap exceeds 78 px, and he loses his
-glasses for glowing white eyes. Twelve seconds later the cracks heal, the ghost
-ledges evaporate and the tower goes back to normal.
+flips to a cream-and-lavender transcendence, **intermediate ledges** appear
+wherever a gap exceeds 78 px, and he loses his glasses for white, shiny eyes.
+Nothing radiates out of him — the shine stays inside the eye. Twelve seconds
+later the cracks heal, the ghost ledges evaporate and the tower goes back to
+normal. Losing a life mid-transcendence clears the ghost ledges too.
 
 ### Nvidia
 
