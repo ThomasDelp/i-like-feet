@@ -2973,6 +2973,15 @@ function unlockLines() {
 
 const CARD = { maxW: 100, h: 106, gap: 10, perRow: 5, rowW: 464 };
 
+/* Les cartes se tassent pour tenir dans la place qu'on leur laisse — un
+   téléphone couché n'a que quelques centaines de pixels de haut. Sans contrainte,
+   elles gardent leur taille de confort. */
+function skinCardHeight(room) {
+  const rows = Math.ceil(SKINS.length / CARD.perRow);
+  if (!room) return CARD.h;
+  return clamp(Math.floor((room - (rows - 1) * CARD.gap) / rows), 58, CARD.h);
+}
+
 let skinCards = [];      // rects cliquables, en coordonnées VIEW
 
 /* Écrit un texte court sur au plus deux lignes, centré. */
@@ -3008,15 +3017,16 @@ function skinLayout() {
   return { rows, w };
 }
 
-function skinPickerHeight() {
+function skinPickerHeight(room) {
   const rowCount = Math.ceil(SKINS.length / CARD.perRow);
-  return rowCount * CARD.h + (rowCount - 1) * CARD.gap;
+  return rowCount * skinCardHeight(room) + (rowCount - 1) * CARD.gap;
 }
 
-function drawSkinPicker(cy) {
+function drawSkinPicker(cy, room) {
   skinCards = [];
   const { rows, w } = skinLayout();
-  const first = cy - skinPickerHeight() / 2;
+  const h = skinCardHeight(room);
+  const first = cy - skinPickerHeight(room) / 2;
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -3026,28 +3036,30 @@ function drawSkinPicker(cy) {
 
   rows.forEach((row, r) => {
     const span = row.length * w + (row.length - 1) * CARD.gap;
-    const top = first + r * (CARD.h + CARD.gap);
-    row.forEach((s, i) => drawSkinCard(s, VIEW.w / 2 - span / 2 + i * (w + CARD.gap), top, w));
+    const top = first + r * (h + CARD.gap);
+    row.forEach((s, i) => drawSkinCard(s, VIEW.w / 2 - span / 2 + i * (w + CARD.gap), top, w, h));
   });
 }
 
-function drawSkinCard(s, x, top, w) {
+function drawSkinCard(s, x, top, w, h) {
   const open = unlocked.has(s.id);
   const worn = skin === s.id;
-  skinCards.push({ id: s.id, x, y: top, w, h: CARD.h, open });
+  skinCards.push({ id: s.id, x, y: top, w, h, open });
 
   ctx.fillStyle = worn ? 'rgba(255,178,122,.2)' : 'rgba(255,255,255,.05)';
-  roundRect(x, top, w, CARD.h, 14);
+  roundRect(x, top, w, h, 14);
   ctx.fill();
   ctx.strokeStyle = worn ? '#ffb27a' : 'rgba(255,255,255,.15)';
   ctx.lineWidth = worn ? 2 : 1;
-  roundRect(x, top, w, CARD.h, 14);
+  roundRect(x, top, w, h, 14);
   ctx.stroke();
 
-  // le personnage lui-même, pas une vignette dessinée à part
+  // le personnage lui-même, pas une vignette dessinée à part. Il rentre dans la
+  // carte, qu'elle soit rétrécie en largeur ou tassée en hauteur.
+  const scale = Math.min(w / 85, (h - 30) / 76);
   ctx.save();
-  ctx.translate(x + w / 2, top + 42);
-  ctx.scale(w / 85, w / 85);
+  ctx.translate(x + w / 2, top + h * 0.4);
+  ctx.scale(scale, scale);
   ctx.globalAlpha = open ? 1 : 0.25;
   drawAlexandre(s.id, { rising: worn });
   ctx.restore();
@@ -3055,17 +3067,24 @@ function drawSkinCard(s, x, top, w) {
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = 'bold 11px ui-rounded, system-ui, sans-serif';
+  // Le nom ne se coupe pas en deux : sur une carte étroite il rapetisse, plutôt
+  // que de déborder sur la voisine.
+  let size = 11;
+  ctx.font = `bold ${size}px ui-rounded, system-ui, sans-serif`;
+  while (size > 8 && ctx.measureText(s.name).width > w - 8) {
+    size -= 0.5;
+    ctx.font = `bold ${size}px ui-rounded, system-ui, sans-serif`;
+  }
   ctx.fillStyle = open ? '#fdf6ef' : 'rgba(253,246,239,.45)';
-  ctx.fillText(s.name, x + w / 2, top + 79);
+  ctx.fillText(s.name, x + w / 2, top + h - 27);
 
   ctx.font = '9px ui-rounded, system-ui, sans-serif';
   if (open) {
     ctx.fillStyle = worn ? '#ffb27a' : 'rgba(253,246,239,.45)';
-    drawWrapped(worn ? 'portée' : s.desc, x + w / 2, top + 91, w - 8, 10);
+    drawWrapped(worn ? 'portée' : s.desc, x + w / 2, top + h - 15, w - 8, 10);
   } else {
     ctx.fillStyle = 'rgba(255,178,122,.85)';
-    drawWrapped(`🔒 ${s.need}`, x + w / 2, top + 91, w - 8, 10);
+    drawWrapped(`🔒 ${s.need}`, x + w / 2, top + h - 15, w - 8, 10);
   }
 }
 
@@ -3074,15 +3093,22 @@ function skinCardAt(event) {
   return skinCards.find((c) => x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) || null;
 }
 
+const lineStyle = (line) => (Array.isArray(line) ? line[1] : 'body');
+
+/* La hauteur du bloc de texte seul — sans bouton. L'écran titre s'en sert pour
+   savoir ce qui reste sous le texte, et y loger le sélecteur. */
+function panelHeight(lines) {
+  return lines.reduce((h, line) => h + (lineStyle(line) === 'title' ? 58 : 26), 0);
+}
+
 /* Overlay text. `align: 'bottom'` and a lighter `dim` keep the summit reunion
    visible behind the winning message. */
 function panel(lines, { dim = 0.72, align = 'center', button = null } = {}) {
   ctx.fillStyle = `rgba(12, 7, 18, ${dim})`;
   ctx.fillRect(0, 0, VIEW.w, VIEW.h);
 
-  const styleOf = (line) => (Array.isArray(line) ? line[1] : 'body');
   const buttonH = button ? BTN.h + 40 : 0;
-  const blockH = lines.reduce((h, line) => h + (styleOf(line) === 'title' ? 58 : 26), 0) + buttonH;
+  const blockH = panelHeight(lines) + buttonH;
   const wide = Math.max(180, Math.min(228, VIEW.w - 176));   // largeur du bouton principal
   let y = { bottom: VIEW.h - blockH - 46, top: 54 }[align] ?? VIEW.h / 2 - blockH / 2;
   ctx.textAlign = 'center';
@@ -3154,25 +3180,38 @@ function draw() {
 
   if (state === 'title') {
     // Le bloc de texte est calé en haut : le bas de l'écran est au sélecteur.
-    panel([
+    // Sur un écran court, les explications passent à la trappe — les cartes et
+    // l'invite, elles, doivent rester lisibles.
+    const tight = VIEW.h < 620;
+    const lines = [
       ['ALEXANDRE', 'title'],
       '…et Sabrina, la princesse aux pieds',
-      '',
+      ...(tight ? [] : ['']),
       'Grimpe 500 m. Évite les rasoirs volants.',
-      ['Ils coûtent 1 Red Bull sur 3 — et tu as 3 vies.', 'dim'],
-      ['Ramasse les canettes, les coupe-ongles, les codes Uber Eats.', 'dim'],
-      '',
-      ['← → ou A / D pour te diriger · il rebondit tout seul', 'dim'],
-      ['espace, ↑ ou un tap : un salto en l’air, un par rebond', 'dim'],
-    ], { align: 'top' });
-    // Le sélecteur est calé au-dessus de l'invite : deux rangées de cartes
-    // mangent le bas de l'écran, alors sa hauteur commande la position.
-    drawSkinPicker(VIEW.h - 84 - skinPickerHeight() / 2);
+      ...(tight ? [] : [
+        ['Ils coûtent 1 Red Bull sur 3 — et tu as 3 vies.', 'dim'],
+        ['Ramasse les canettes, les coupe-ongles, les codes Uber Eats.', 'dim'],
+        '',
+      ]),
+      ...(VIEW.h < 480 ? [] : [
+        ['← → ou A / D pour te diriger · il rebondit tout seul', 'dim'],
+        ['espace, ↑ ou un tap : un salto en l’air, un par rebond', 'dim'],
+      ]),
+    ];
+    panel(lines, { align: 'top' });
+
+    // Le sélecteur occupe ce qui reste entre le texte et l'invite, et tasse ses
+    // cartes s'il le faut : sur un téléphone couché, les deux se chevauchaient.
+    const prompt = tight ? 34 : 52;
+    const floor = VIEW.h - prompt - 24;
+    const room = floor - (54 + panelHeight(lines) + 22);
+    drawSkinPicker(floor - skinPickerHeight(room) / 2, room);
+
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = 'bold 24px ui-rounded, system-ui, sans-serif';
+    ctx.font = `bold ${tight ? 18 : 24}px ui-rounded, system-ui, sans-serif`;
     ctx.fillStyle = '#fdf6ef';
-    ctx.fillText('appuie ou tape pour commencer', VIEW.w / 2, VIEW.h - 52);
+    ctx.fillText('appuie ou tape pour commencer', VIEW.w / 2, VIEW.h - prompt);
   } else if (state === 'pause') {
     panel([['PAUSE', 'big'], ['appuie sur P pour reprendre', 'dim']]);
   } else if (state === 'downed') {
@@ -3408,10 +3447,22 @@ canvas.addEventListener('pointercancel', () => { tap = null; touchDir = 0; });
    l'échelle, sinon il ne resterait plus de place pour l'écran titre. */
 
 const BASE = { w: 480, h: 720 };
-const FIELD = { w: [320, 900], h: [520, 1600] };   // bornes du champ en plein écran
+const FIELD = { w: [300, 1000], h: [320, 1600] };   // bornes du champ en plein écran
 
 function fullBleed() {
-  return window.matchMedia('(max-width: 860px)').matches && window.innerHeight >= FIELD.h[0];
+  return window.matchMedia('(max-width: 860px)').matches;
+}
+
+/* La taille réellement visible. `innerHeight` compte la bande que la barre du
+   navigateur recouvre : s'y fier laissait un vide en bas de l'écran, ou faisait
+   dépasser le canvas. visualViewport dit la vérité, et se corrige quand la barre
+   se replie. */
+function viewportSize() {
+  const vv = window.visualViewport;
+  return {
+    w: vv ? vv.width : window.innerWidth,
+    h: vv ? vv.height : window.innerHeight,
+  };
 }
 
 function setupCanvas() {
@@ -3419,8 +3470,9 @@ function setupCanvas() {
   const bleed = fullBleed();
 
   if (bleed) {
-    VIEW.w = Math.round(clamp(window.innerWidth, FIELD.w[0], FIELD.w[1]));
-    VIEW.h = Math.round(clamp(window.innerHeight, FIELD.h[0], FIELD.h[1]));
+    const seen = viewportSize();
+    VIEW.w = Math.round(clamp(seen.w, FIELD.w[0], FIELD.w[1]));
+    VIEW.h = Math.round(clamp(seen.h, FIELD.h[0], FIELD.h[1]));
   } else {
     VIEW.w = BASE.w;
     VIEW.h = BASE.h;
@@ -3555,12 +3607,20 @@ if (helpSheet) {
 }
 
 setupCanvas();
-window.addEventListener('resize', () => {
+
+/* La barre d'adresse qui se replie, une rotation, un changement de fenêtre : on
+   se remet à la taille vue. visualViewport prévient là où `resize` ne dit rien. */
+function onViewportChange() {
   const was = { w: VIEW.w, h: VIEW.h };
   setupCanvas();
-  if (VIEW.w !== was.w || VIEW.h !== was.h) refitWorld();
+  if (VIEW.w === was.w && VIEW.h === was.h) return;
+  refitWorld();
   renderLegend();
-});
+}
+
+window.addEventListener('resize', onViewportChange);
+window.addEventListener('orientationchange', onViewportChange);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', onViewportChange);
 loadSkins();
 reset();
 renderLegend();

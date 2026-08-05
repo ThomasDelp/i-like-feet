@@ -56,7 +56,17 @@ body {
 /* Plein écran : sur téléphone, game.js met le canvas à la taille exacte de la
    fenêtre (1 px de jeu = 1 px CSS) et pose la classe. Le CSS n'a plus qu'à
    enlever tout ce qui l'entoure. */
-body.full-bleed { padding: 0; gap: 0; }
+body.full-bleed {
+  padding: 0;
+  gap: 0;
+  /* Le canvas fait exactement la hauteur vue : on le cale en haut à gauche, pour
+     qu'un écart de quelques pixels pendant que la barre du navigateur se replie
+     passe sous elle au lieu de rogner le haut. */
+  align-items: flex-start;
+  justify-content: flex-start;
+  height: 100dvh;
+  overflow: hidden;
+}
 body.full-bleed .stage { height: auto; }
 body.full-bleed #game {
   height: auto;
