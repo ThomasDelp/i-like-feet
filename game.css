@@ -12,6 +12,12 @@
 html, body { height: 100%; margin: 0; }
 
 body {
+  /* Sur mobile, un appui sur le canvas surlignait toute la page en bleu :
+     ni highlight de tap, ni sélection de texte pendant qu'on dirige Alexandre. */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -124,7 +130,10 @@ kbd {
 
 @media (max-height: 640px), (max-width: 860px) {
   body { gap: 1rem; padding: 0.75rem; overflow: auto; }
-  .stage { height: 78vh; }
-  .legend { max-width: 32rem; }
+  /* Sur un téléphone, c'est la largeur qui commande : le canvas fait 2/3 de sa
+     hauteur, donc on la plafonne pour qu'il ne déborde pas de l'écran. La
+     légende, elle, ne doit jamais élargir la page au-delà du viewport. */
+  .stage { height: min(78vh, 138vw); max-width: 100%; }
+  .legend { max-width: min(32rem, 100%); }
   .legend ul { line-height: 1.7; }
 }
