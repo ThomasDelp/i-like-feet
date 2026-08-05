@@ -58,7 +58,7 @@ const BONUS = {
   clipper: { label: 'COUPE-ONGLES !',   spark: '#8bd7ff', glow: 'rgba(139,215,255,.4)' },
   cat:     { label: 'NVIDIA !',         spark: '#76b900', glow: 'rgba(118,185,0,.45)' },
   uber:    { label: 'UBER EATS !',      spark: '#06c167', glow: 'rgba(6,193,103,.42)' },
-  creme:   { label: 'CRÈME MIRACLE !',  spark: '#fff3c4', glow: 'rgba(255,246,205,.5)' },
+  creme:   { label: 'CRÈME POUR UN CRÂNE LUISANT !', spark: '#fff3c4', glow: 'rgba(255,246,205,.5)' },
 };
 
 const canvas = document.getElementById('game');
@@ -1504,9 +1504,12 @@ function drawToasts() {
   for (const t of toasts) {
     const fade = t.age < 8 ? t.age / 8 : 1 - Math.max(0, (t.age - 44) / (t.life - 44));
     ctx.globalAlpha = clamp(fade, 0, 1);
-    ctx.strokeText(t.text, t.x, t.y - camY);
+    // Les libellés longs sont recentrés pour ne pas déborder de l'écran.
+    const half = ctx.measureText(t.text).width / 2 + 8;
+    const x = clamp(t.x, Math.min(half, VIEW.w / 2), Math.max(VIEW.w - half, VIEW.w / 2));
+    ctx.strokeText(t.text, x, t.y - camY);
     ctx.fillStyle = t.color;
-    ctx.fillText(t.text, t.x, t.y - camY);
+    ctx.fillText(t.text, x, t.y - camY);
   }
   ctx.globalAlpha = 1;
 }

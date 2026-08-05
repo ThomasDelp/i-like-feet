@@ -40,7 +40,7 @@ platforms (never on moving ones — they'd drift out of sync).
 | ✂️ | **Coupe-ongles** | 8 s shield: razors shatter on contact instead of hurting |
 | 🥫 | **Red Bull** | +1 HP — or a spare life if he's already full |
 | 🧑‍🦲 | **1UP** | one more Alexandre, up to five |
-| 🧴 | **Crème pour le crâne** | the rarest — see below |
+| 🧴 | **Crème pour un crâne luisant** | the rarest — see below |
 | 🛍️ | **Uber Eats** | a code redeemed for one of three random meals — see below |
 | 🐱 | **Nvidia** | the rare one — see below |
 
@@ -56,7 +56,7 @@ included, then serves it.
 | 🍜 | **Nouilles** | 3 grapples: click or tap a ledge and a noodle reels him to it, Spider-Man style. Anchors track moving ledges; a tap away from any ledge still steers |
 | 🍟 | **Frites** | 4.5 s of eating badly: fries spray out ahead of him, and each one destroys a razor on contact, destroying itself too |
 
-### Crème pour le crâne
+### Crème pour un crâne luisant
 
 The rarest pickup (~0.35% of eligible platforms). His scalp turns so shiny it
 splits the world: the screen fractures along nine frozen crack lines, the theme
