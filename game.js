@@ -218,12 +218,22 @@ function reset() {
 
 /* -------------------------------------------------------------- platforms */
 
+/* Le sommet de la colonne déjà construite : y décroît en montant. */
+function highestPlatform() {
+  let top = platforms[0].y;
+  for (const plat of platforms) if (plat.y < top) top = plat.y;
+  return top;
+}
+
 /* Fill the column with platforms up to one screen above the camera. Difficulty
    rides on height: bigger gaps, narrower ledges, more moving/fragile ones. */
 function buildPlatforms() {
+  // Le curseur, c'est la passerelle la plus haute — pas la dernière ajoutée :
+  // la transcendance intercale des passerelles en fin de tableau et repartir de
+  // celles-là regénèrerait toute la colonne par-dessus l'existante.
   // If culling ever empties the column (only reachable by teleporting the
   // player), reseed from just below the camera instead of stalling forever.
-  let top = platforms.length ? platforms[platforms.length - 1].y : camY + VIEW.h;
+  let top = platforms.length ? highestPlatform() : camY + VIEW.h;
   const ceiling = camY - VIEW.h;
 
   while (top > ceiling) {
@@ -516,14 +526,22 @@ function ensureGhosts() {
   platforms.push(...added);
 }
 
-function endTranscend() {
+/* Le monde se recolle : les passerelles intermédiaires s'évaporent. Appelé aussi
+   quand une vie se termine pendant la transcendance, sinon elles resteraient. */
+function clearGhosts(sparkle) {
   for (const plat of platforms) {
     if (plat.type === 'ghost') {
       plat.dead = true;
-      burst(plat.x + plat.w / 2, plat.y, 4, ['#fff6cd', '#ffffff'], 2);
+      if (sparkle) burst(plat.x + plat.w / 2, plat.y, 4, ['#fff6cd', '#ffffff'], 2);
     }
   }
+  platforms = platforms.filter((p) => !p.dead);
   cracks = [];
+  crackT = 0;
+}
+
+function endTranscend() {
+  clearGhosts(true);
   toast('…retour au monde', player.x, player.y - 40, '#c7b6a8');
 }
 
@@ -735,6 +753,7 @@ function downed(reason) {
   player.fries = 0;
   player.noodles = 0;
   player.trans = 0;
+  clearGhosts(false);
   player.grapple = null;
   shake = 18;
   burst(player.x, player.y, 20, ['#ffd9c9', '#ff8fa3', '#fdf6ef'], 4.2);
