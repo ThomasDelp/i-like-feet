@@ -95,7 +95,9 @@ const SKINS = [
     trousers: '#f0c49b', shoes: '#c62828',
     logo: true,
     need: 'Sabrina sauvée, 0 vie perdue',
-    test: () => state === 'win' && lives === START_LIVES,
+    // `>=` et pas `===` : une canette prise à pleine vie en ajoute une, et une
+    // course parfaite finirait à 4 vies — ce serait le comble de la fermer là.
+    test: () => state === 'win' && lives >= START_LIVES,
   },
 ];
 
