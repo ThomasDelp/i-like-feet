@@ -849,6 +849,17 @@ function stepPlayer() {
   if (player.jet > 0) player.vy = Math.max(player.vy - 1.15, JET_MAX);
 
   player.y += player.vy;
+
+  // Le pet ne le porte jamais au-dessus du trône : arrivé là, la propulsion se
+  // coupe et il redescend se poser comme tout le monde.
+  const jetCeiling = goalY - player.h / 2 - 8;
+  if (player.jet > 0 && player.y < jetCeiling) {
+    player.y = jetCeiling;
+    player.vy = 0;
+    player.jet = 0;
+    toast('PLUS HAUT, C’EST SABRINA', player.x, player.y - 46, '#9ab53a');
+  }
+
   const bottom = player.y + player.h / 2;
 
   if (player.vy > 0) {

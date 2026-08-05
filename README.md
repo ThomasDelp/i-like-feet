@@ -52,7 +52,7 @@ included, then serves it.
 
 | | | |
 | --- | --- | --- |
-| 🍛 | **Indien** | 3.4 s of curry propulsion — he farts, and it lifts him at a steady climb, olive plume included |
+| 🍛 | **Indien** | 3.4 s of curry propulsion — he farts, and it lifts him at a steady climb, olive plume included. It never carries him past the throne: at the summit the jet cuts out and he drops onto it |
 | 🍜 | **Nouilles** | 3 grapples: click or tap a ledge and a noodle reels him to it, Spider-Man style. Anchors track moving ledges; a tap away from any ledge still steers |
 | 🍟 | **Frites** | 4.5 s of eating badly: fries spray out ahead of him, and each one destroys a razor on contact, destroying itself too |
 
