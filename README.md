@@ -15,11 +15,42 @@ his three Red Bulls (the HP bar is a row of cans).
 | Control | |
 | --- | --- |
 | <kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd> | Steer. He bounces on his own. |
+| <kbd>Space</kbd> / <kbd>↑</kbd> / <kbd>W</kbd> | **Double jump** — one mid-air backflip, recharged on every bounce |
 | <kbd>P</kbd> · <kbd>R</kbd> · <kbd>M</kbd> | Pause · restart · mute |
-| Touch | Hold the left or right half of the canvas |
+| <kbd>H</kbd> or the <kbd>?</kbd> button | The help sheet, over the game — it pauses the run |
+| Touch | Hold the left or right half to steer, **tap briefly** to flip |
 | <kbd>1</kbd> … <kbd>9</kbd> | Pick a skin, on the title screen — or click its card |
 | <kbd>T</kbd> | Back to the skin picker from anywhere — also a **Tenues** button on the end screens |
 | Game over / win | Hit the on-canvas **Rejouer** button (armed after ~0.8 s) or <kbd>R</kbd> — a stray tap anywhere else no longer wipes the score off the screen |
+
+### Double jump
+
+One extra jump in the air, spent per bounce and recharged by `land()`, so it
+rescues a misjudged gap instead of replacing the bounce. `AIR_JUMP` is a shade
+weaker than `JUMP`. It animates as a full **backflip** over `FLIP_TIME` frames —
+`drawPlayer()` rotates around the body's middle, before the `face` mirror and
+against it, so his head goes back over his shoulder whichever way he is facing —
+plus a dust ring that stays where he pushed off (`rings`, drawn under him and
+fading as it widens) and a downward burst. Two green chevrons in the HUD say
+whether it is still in hand.
+
+On touch, a press under `TAP_TIME` that never drifts past `TAP_SLOP` is a flip;
+anything longer is the steering hold it always was, and a tap near a platform
+still goes to the noodle grapple when he has one.
+
+### Full screen and the help sheet
+
+On a phone (`max-width: 860px`, and tall enough to be portrait) the canvas takes
+the whole window at scale 1: the field is as wide as the device and a taller
+screen **reveals more tower** rather than zooming. `setupCanvas()` writes the new
+size into `VIEW`, and a rotation mid-run calls `refitWorld()` so platforms,
+bonuses and Alexandre are pulled back inside the new width. Desktop keeps the
+480 × 720 column, scaled by CSS.
+
+The legend used to sit beside the canvas; it is now a sheet over the game, opened
+by the round **?** in the corner (or <kbd>H</kbd>) and closed with ✕, <kbd>Esc</kbd>
+or a click on the veil. Opening it pauses a live run and closing it resumes —
+unless the pause was yours.
 
 ### Skins
 
@@ -40,7 +71,7 @@ above the prompt.
 | **L’hiver** | black beanie, black coat, blue-and-black scarf with red stripes | reach **400 m** |
 | **Le pyjama** | striped, buttoned, with slippers | **meet Nvidia**, his cat |
 | **Le gala** | navy blazer worn open, white shirt, no tie, cognac belt, caramel dress shoes | reach the throne with **all 3 Red Bulls** |
-| **Stanislas** | red hoodie — hood down, ecru drawstrings, kangaroo pocket, white tee at the collar — and beige chinos | get **a meal off the Uber Eats wheel** |
+| **Stanislas** | brown hair swept over the forehead, red hoodie — hood down, ecru drawstrings, kangaroo pocket, white tee at the collar — and beige chinos | get **a meal off the Uber Eats wheel** |
 
 An unlock is announced on the end screen that earned it, in gold: the toast it
 also fires is drawn under the panel and at the player's position, where nobody
@@ -54,8 +85,8 @@ from `win()` for the two that hang on the summit, since those can only be judged
 once. The character is drawn by one `drawAlexandre(skin, pose)`, so the picker
 cards and the legend show the real thing rather than a portrait maintained on
 the side. Each garment is a flag on the skin (`jacket`, `blazer`, `hoodie`,
-`vest`, `coat`, `beanie`, `scarf`, `stripes`, `hipShorts`) with its own small
-draw function, so outfits mix rather than each one forking the body. `bodyW` /
+`vest`, `coat`, `beanie`, `hair`, `scarf`, `stripes`, `hipShorts`) with its own
+small draw function, so outfits mix rather than each one forking the body. `bodyW` /
 `bodyH` widen or lengthen the torso — a coat hangs lower, an oversized hoodie
 spreads — and `sleeveColor` lets a jacket keep its own sleeves over a white
 shirt.
@@ -111,11 +142,16 @@ normal. Losing a life mid-transcendence clears the ghost ledges too.
 ### Nvidia
 
 Roughly once every two climbs, Alexandre finds his cat. Everything freezes for
-a ~2.4 s cutscene in three beats: he tips out a bowl of croquettes, Nvidia eats,
-swells to four times the size in a green aura, then hoists him **200 m** up the
-tower on raised paws through a field of speed lines. `assets/nvidia.m4a` plays
-over it; the clip is longer than the scene, so it carries on into the resumed
-climb and only fades if the run ends or you press <kbd>M</kbd>.
+a ~2.8 s cutscene in four beats: he tips out a bowl of croquettes, Nvidia eats,
+swells to four times the size in a green aura, hoists him **200 m** up the tower
+on raised paws through a field of speed lines — and then **throws him onto a
+platform** rather than letting go over a gap. `catLandingPlat()` picks the
+nearest solid ledge below the top of the ride (never a fragile one, never the
+throne) and builds one if the tower offers nothing; the target is re-read every
+frame of the toss, since a sliding platform is no longer where it was when the
+cat let fly. He arrives just above it and bounces. `assets/nvidia.m4a` plays over
+the scene; the clip is longer than it, so it carries on into the resumed climb
+and only fades if the run ends or you press <kbd>M</kbd>.
 
 **Platforms:** purple = solid · teal = sliding · orange = cracks after one
 bounce · **yellow = trampoline, launching him twice as high** · green = the

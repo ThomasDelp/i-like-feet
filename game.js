@@ -10,6 +10,8 @@ const VIEW = { w: 480, h: 720 };
 const GOAL = 5000;            // world pixels from the ground up to the princess
 const GRAVITY = 0.42;
 const JUMP = -12.6;           // apex ≈ 189px, so keep platform gaps under ~150
+const AIR_JUMP = -11.4;       // le second saut, un cheveu plus court que le premier
+const FLIP_TIME = 15;         // frames du salto, et de l'anneau de poussière
 const MOVE_ACCEL = 0.62;
 const MOVE_MAX = 5.4;
 const FRICTION = 0.9;
@@ -22,11 +24,12 @@ const SPRING_VY = -20.5;      // trampoline launch, ~2.5 platforms in one go
 const MID_REST = -GOAL / 2;   // the one and only checkpoint, halfway up
 const DOWN_TIME = 78;         // frames of the "he's down" beat before respawning
 
-// The Nvidia cutscene, in frames: feeding, flexing, then the ride up.
+// The Nvidia cutscene, in frames: feeding, flexing, the ride up, then the throw.
 const CAT_FEED = 44;
 const CAT_FLEX = 34;
 const CAT_RIDE = 66;
-const CAT_TOTAL = CAT_FEED + CAT_FLEX + CAT_RIDE;
+const CAT_THROW = 22;         // le chat le lance sur une passerelle, pas dans le vide
+const CAT_TOTAL = CAT_FEED + CAT_FLEX + CAT_RIDE + CAT_THROW;
 const CAT_LIFT = 2000;        // 200 m in Nvidia's paws
 
 // Uber Eats : une machine à sous, un plat, un pouvoir.
@@ -161,6 +164,7 @@ const SKINS = [
     bodyW: 22, bodyH: 19,                  // le sweat est ample, il tombe bas
     hoodie: true, hood: '#b3332a', hem: '#a72f27', pocket: 'rgba(0,0,0,.12)',
     print: 'rgba(255,255,255,.16)', tee: '#f4f2ee', cord: '#f0e6d8',
+    hair: '#2e2018',                       // brun foncé, la mèche sur le front
     trousers: '#d8c8a6', shoes: '#efeae2',
     need: 'un plat Uber Eats servi',
     test: () => player.ateMeal,
@@ -305,12 +309,18 @@ const sfx = {
   check: () => { beep(523, 0.1, 'triangle', 0.06); setTimeout(() => beep(784, 0.16, 'triangle', 0.06), 90); },
   fart: () => [0, 90, 165].forEach((d, i) => setTimeout(() => beep(rand(58, 104) - i * 6, 0.14, 'sawtooth', 0.055), d)),
   noodle: () => { beep(880, 0.06, 'triangle', 0.05); setTimeout(() => beep(560, 0.1, 'triangle', 0.045), 60); },
+  flip: () => { beep(520, 0.07, 'square', 0.045); setTimeout(() => beep(1040, 0.1, 'triangle', 0.04), 60); },
 };
 
 /* ----------------------------------------------------------------- input */
 
 const keys = new Set();
 let touchDir = 0;
+// Le tap qui saute, distingué du maintien qui dirige : moins de TAP_TIME ms et
+// moins de TAP_SLOP px de glissement.
+const TAP_TIME = 180;
+const TAP_SLOP = 12;
+let tap = null;
 
 function steer() {
   let dir = touchDir;
@@ -325,8 +335,9 @@ let state = 'title';          // title | play | pause | cat | downed | dead | wi
 let player, platforms, razors, bonuses, toasts, particles, backFeet;
 let camY, groundY, goalY, best, shake, frames, razorTimer, endTimer;
 let lives, checkpoint, restPlaced, downTimer, deathReason;
-let catTimer, catFrom, catTarget;
+let catTimer, catFrom, catTarget, catThrow;
 let fries, wheelTimer, wheelPick, wheelStep, cracks, crackT;
+let rings;   // les anneaux de poussière laissés par les saltos
 
 function reset() {
   groundY = 0;
@@ -340,6 +351,7 @@ function reset() {
     face: 1, hp: MAX_HP, invuln: 0, clipper: 0,
     squash: 0, blink: 0, peak: 0,
     jet: 0, fries: 0, noodles: 0, grapple: null, trans: 0,
+    airJump: 1, flip: 0,   // un saut en l'air, rechargé à chaque rebond
     metCat: false,   // le chat croisé au moins une fois : ça vaut un pyjama
     ateMeal: false,  // idem pour un plat Uber Eats servi
   };
@@ -353,6 +365,7 @@ function reset() {
   catTimer = 0;
   catFrom = 0;
   catTarget = 0;
+  catThrow = null;
   stopCatSound();
 
   platforms = [{ ...checkpoint, dead: false }];
@@ -366,6 +379,7 @@ function reset() {
   wheelStep = -1;
   cracks = [];
   crackT = 0;
+  rings = [];
   shake = 0;
   frames = 0;
   razorTimer = 140;
@@ -809,7 +823,8 @@ function stepCat() {
   }
 
   // The ride: both the cat and the camera climb, generating the tower as it goes.
-  if (catTimer > CAT_FEED + CAT_FLEX) {
+  const rideEnd = CAT_FEED + CAT_FLEX + CAT_RIDE;
+  if (catTimer > CAT_FEED + CAT_FLEX && catTimer <= rideEnd) {
     const p = clamp((catTimer - CAT_FEED - CAT_FLEX) / CAT_RIDE, 0, 1);
     const eased = p * p * (3 - 2 * p);
     player.y = catFrom + (catTarget - catFrom) * eased;
@@ -821,18 +836,83 @@ function stepCat() {
     }
   }
 
+  // Le lancer : le chat le repose sur une passerelle. Il visait le vide avant —
+  // arrivé en haut, on partait en chute libre en espérant qu'il y ait quelque
+  // chose dessous.
+  if (catTimer === rideEnd) {
+    catThrow = { from: { x: player.x, y: player.y }, plat: catLandingPlat() };
+    sfx.boost();
+  }
+  if (catTimer > rideEnd) {
+    const p = clamp((catTimer - rideEnd) / CAT_THROW, 0, 1);
+    const eased = p * p * (3 - 2 * p);
+    const to = catThrowTarget();
+    player.x = catThrow.from.x + (to.x - catThrow.from.x) * eased;
+    // une petite cloche : il monte encore un peu avant de retomber sur la passerelle
+    player.y = catThrow.from.y + (to.y - catThrow.from.y) * eased
+      - Math.sin(p * Math.PI) * 40;
+    player.face = to.x >= catThrow.from.x ? 1 : -1;
+    camY = Math.min(camY, player.y - VIEW.h * 0.55);
+    if (catTimer % 2 === 0) {
+      burst(player.x, player.y + 10, 2, ['#76b900', '#d7ff8a', '#fdf6ef'], 1.6);
+    }
+  }
+
   if (catTimer >= CAT_TOTAL) {
+    const to = catThrowTarget();
     state = 'play';
-    player.vy = 1;
+    player.x = to.x;
+    player.y = to.y;
+    player.vy = 1;              // juste au-dessus de la passerelle : il rebondit dessus
+    player.airJump = 1;
     player.invuln = 80;
     razorTimer = Math.max(razorTimer, 100);
     burst(player.x, player.y, 22, ['#76b900', '#d7ff8a', '#fdf6ef'], 4.2);
   }
 }
 
+/* Sur quelle passerelle le chat le pose : la plus proche sous l'arrivée de la
+   course. Les fragiles cassent au premier rebond et le trône se gagne à la
+   force du mollet, donc ni l'une ni l'autre ; s'il n'y a rien de fiable, on lui
+   en pose une, plutôt que de le lâcher dans le vide. */
+function catLandingPlat() {
+  const ideal = player.y + 90;
+  let best = null;
+  let bestCost = Infinity;
+  for (const p of platforms) {
+    if (p.dead || p.type === 'fragile' || p.type === 'throne') continue;
+    if (p.y <= player.y + 20 || p.y >= player.y + VIEW.h * 0.55) continue;
+    // Une coulissante fait une cible mouvante : acceptable, mais en second choix.
+    const cost = Math.abs(p.y - ideal) + (p.type === 'moving' ? 60 : 0);
+    if (cost < bestCost) { best = p; bestCost = cost; }
+  }
+  if (best) return best;
+
+  const plat = {
+    x: clamp(player.x - 60, 6, Math.max(6, VIEW.w - 126)),
+    y: player.y + 96, w: 120, type: 'normal', dead: false,
+  };
+  platforms.push(plat);
+  return plat;
+}
+
+/* Le point de dépose, relu à chaque frame : une passerelle coulissante n'est
+   plus là où elle était au moment du lancer. */
+function catThrowTarget() {
+  const p = catThrow.plat;
+  return {
+    x: clamp(p.x + p.w / 2, 20, VIEW.w - 20),
+    y: p.y - player.h / 2 - 3,
+  };
+}
+
 /* ------------------------------------------------------------------- toasts */
 
 function toast(text, x, y, color) {
+  // Deux annonces nées au même instant à la même hauteur se superposaient,
+  // illisibles — deux skins débloqués d'un coup, par exemple. La suivante monte
+  // d'un cran.
+  while (toasts.some((t) => t.age < 5 && Math.abs(t.y - y) < 20)) y -= 24;
   toasts.push({ text, x: clamp(x, 52, VIEW.w - 52), y, color, age: 0, life: 72 });
 }
 
@@ -1065,6 +1145,7 @@ function stepPlayer() {
     if (player.jet % 15 === 0) beep(rand(56, 96), 0.1, 'sawtooth', 0.035);
   }
   if (player.squash > 0) player.squash--;
+  if (player.flip > 0) player.flip--;
   if (player.vy < -15 && frames % 2 === 0) {
     burst(player.x, player.y + player.h / 2, 2, ['#ffd166', '#5b8def', 'rgba(255,255,255,.9)'], 1.2);
   }
@@ -1083,6 +1164,7 @@ function land(plat) {
   player.y = plat.y - player.h / 2;
   player.vy = JUMP;
   player.squash = 9;
+  player.airJump = 1;      // le salto se recharge à chaque rebond
   burst(player.x, plat.y, 5, ['rgba(255,255,255,.7)', '#e8c9ff'], 1.8);
   sfx.jump();
 
@@ -1102,6 +1184,46 @@ function land(plat) {
     sfx.check();
   }
   if (plat.type === 'throne') win();
+}
+
+/* ------------------------------------------------------------- le double saut
+
+   Un seul saut en l'air, rechargé au rebond suivant : il ne remplace pas le
+   rebond, il rattrape un écart mal jugé. Le salto et l'anneau de poussière sont
+   là pour qu'on voie tout de suite qu'il a été consommé. */
+
+function airJump() {
+  if (state !== 'play' || player.grapple || player.airJump <= 0) return false;
+  player.airJump = 0;
+  player.vy = AIR_JUMP;
+  player.flip = FLIP_TIME;
+  player.squash = 0;
+  rings.push({ x: player.x, y: player.y + player.h / 2 - 2, age: 0 });
+  burst(player.x, player.y + player.h / 2, 8,
+    ['rgba(255,255,255,.85)', '#ffb27a', '#ffd166'], 2.6);
+  sfx.flip();
+  return true;
+}
+
+function stepRings() {
+  for (const r of rings) r.age++;
+  rings = rings.filter((r) => r.age < 22);
+}
+
+/* L'anneau : il reste où il a pris appui, s'élargit et s'efface. */
+function drawRings() {
+  for (const r of rings) {
+    const p = r.age / 22;
+    ctx.save();
+    ctx.globalAlpha = (1 - p) * 0.55;
+    ctx.strokeStyle = '#fff3d6';
+    ctx.lineWidth = 2.6 * (1 - p) + 0.6;
+    ctx.beginPath();
+    ctx.ellipse(r.x, r.y - camY, 8 + p * 30, 3 + p * 11, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
 }
 
 function win() {
@@ -1632,7 +1754,7 @@ function drawCatScene() {
     ctx.stroke();
     drawCat(cx, py + 14 + p * 16, 0.85 + p * 1.25, p > 0.3, false);
     caption('NVIDIA DEVIENT ÉNORME 💪', '#76b900');
-  } else {
+  } else if (catTimer <= CAT_FEED + CAT_FLEX + CAT_RIDE) {
     // speed lines, then the cat holding him overhead
     ctx.strokeStyle = 'rgba(215,255,138,.45)';
     ctx.lineWidth = 2;
@@ -1646,6 +1768,22 @@ function drawCatScene() {
     ctx.stroke();
     drawCat(player.x, py + 100, 2.1, true, false);
     caption('+200 M EN UN SAUT', '#76b900');
+  } else {
+    // Le lancer : le chat reste en arrière, pattes tendues, et s'efface pendant
+    // qu'Alexandre file vers la passerelle.
+    const p = clamp((catTimer - CAT_FEED - CAT_FLEX - CAT_RIDE) / CAT_THROW, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = 1 - p * 0.85;
+    drawCat(catThrow.from.x, catThrow.from.y - camY + 104, 2.1, true, false);
+    ctx.restore();
+    // la traînée entre les pattes du chat et lui
+    ctx.strokeStyle = `rgba(215,255,138,${0.5 - p * 0.4})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(catThrow.from.x, catThrow.from.y - camY + 30);
+    ctx.lineTo(player.x, py + 14);
+    ctx.stroke();
+    caption('ET IL LE POSE EN DOUCEUR', '#d7ff8a');
   }
 }
 
@@ -1719,6 +1857,16 @@ function drawPlayer() {
   ctx.save();
   ctx.translate(player.x, y);
   ctx.globalAlpha = flicker ? 0.35 : 1;
+  // Le salto : un tour complet en arrière, autour du milieu du corps et non de
+  // l'origine — sinon il pivoterait autour de son nombril et sortirait du cadre.
+  // La rotation passe avant le miroir de `face` et va à contresens de celui-ci :
+  // la tête part en arrière, vers son dos, quel que soit le côté qu'il regarde.
+  if (player.flip > 0) {
+    const spin = (1 - player.flip / FLIP_TIME) * Math.PI * 2;
+    ctx.translate(0, 5);
+    ctx.rotate(-player.face * spin);
+    ctx.translate(0, -5);
+  }
   ctx.scale(player.face * sx, sy);
 
   // curry propulsion: a plume at his feet, since the particle trail is left far
@@ -1866,6 +2014,7 @@ function drawAlexandre(skinId, pose = {}) {
   ctx.fill();
 
   if (s.crown) drawTinyCrown();
+  if (s.hair) drawHair(s);
   if (s.beanie) drawBeanie(s);
 
   // cornet de frites, tenu bien serré
@@ -2117,6 +2266,50 @@ function drawScarf(s) {
   ctx.fillStyle = s.scarfDot;
   roundRect(4.8, 9.2, 4.8, 2.2, 1.1);         // la frange, tout en bas
   ctx.fill();
+}
+
+/* Une coupe de cheveux : la calotte suit le crâne, la mèche retombe en biais sur
+   le front et deux pattes descendent devant les oreilles. `sweep` renvoie la
+   mèche en arrière plutôt que sur le front. */
+function drawHair(s) {
+  ctx.fillStyle = s.hair;
+  ctx.beginPath();                              // la calotte, posée sur le crâne
+  ctx.arc(0, -12, 11.4, Math.PI * 1.02, Math.PI * 1.98);
+  ctx.closePath();
+  ctx.fill();
+
+  if (s.sweep) {
+    // Ramenés en arrière, avec du volume au-dessus du front.
+    ctx.beginPath();
+    ctx.moveTo(-10.6, -15.4);
+    ctx.quadraticCurveTo(-6, -25.4, 3, -24.4);
+    ctx.quadraticCurveTo(9.4, -23.4, 10.6, -15.4);
+    ctx.quadraticCurveTo(4, -19.4, -10.6, -15.4);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    // La mèche : elle part de la tempe gauche et balaie le front vers la droite.
+    ctx.beginPath();
+    ctx.moveTo(-11.2, -14.6);
+    ctx.quadraticCurveTo(-9.4, -22.6, -1.4, -22.4);
+    ctx.quadraticCurveTo(7.4, -22, 10.8, -13.6);
+    ctx.quadraticCurveTo(6.4, -16.8, 1.4, -15.8);
+    ctx.quadraticCurveTo(-4.6, -14.4, -8.2, -13.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();                            // la pointe qui retombe en biais
+    ctx.moveTo(6.6, -16.4);
+    ctx.quadraticCurveTo(11.2, -15.2, 10.2, -10.8);
+    ctx.quadraticCurveTo(8.6, -13.4, 5.4, -14);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  for (const dir of [-1, 1]) {                  // les pattes, devant les oreilles
+    ctx.beginPath();
+    ctx.ellipse(dir * 10.2, -13.4, 1.9, 3.4, dir * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 /* Le bonnet, tiré jusqu'au-dessus des lunettes — le crâne luisant disparaît. */
@@ -2411,6 +2604,18 @@ function drawHud() {
   ctx.font = 'bold 14px ui-rounded, system-ui, sans-serif';
   ctx.fillText(`×${Math.max(0, lives)}`, 116, 21);
 
+  // le salto en réserve : deux chevrons, éteints une fois consommés
+  ctx.strokeStyle = player.airJump > 0 ? '#8bffc8' : 'rgba(139,255,200,.22)';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 2; i++) {
+    const cy = 26 - i * 6;
+    ctx.beginPath();
+    ctx.moveTo(146, cy);
+    ctx.lineTo(151, cy - 4.4);
+    ctx.lineTo(156, cy);
+    ctx.stroke();
+  }
 
   // une jauge par pouvoir en cours, puis les nouilles restantes
   const bars = [];
@@ -2433,14 +2638,16 @@ function drawHud() {
     ctx.fillText(`🍜 ×${player.noodles} — clique une passerelle`, 14, 46 + bars.length * 10);
   }
 
+  // En plein écran, le bouton « ? » flotte dans le coin : le score se décale.
+  const right = VIEW.w - (document.body.classList.contains('full-bleed') ? 56 : 16);
   ctx.textAlign = 'right';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = ink;
   ctx.font = 'bold 20px ui-rounded, system-ui, sans-serif';
-  ctx.fillText(`${climbed} m`, VIEW.w - 16, 26);
+  ctx.fillText(`${climbed} m`, right, 26);
   ctx.fillStyle = inkDim;
   ctx.font = '12px ui-rounded, system-ui, sans-serif';
-  ctx.fillText(`objectif ${total} m · record ${best} m`, VIEW.w - 16, 43);
+  ctx.fillText(`objectif ${total} m · record ${best} m`, right, 43);
 
   // climb meter down the right edge
   const trackTop = 62;
@@ -2792,7 +2999,10 @@ function drawWrapped(text, cx, y, maxW, lineH) {
 function skinLayout() {
   const rowCount = Math.ceil(SKINS.length / CARD.perRow);
   const perRow = Math.ceil(SKINS.length / rowCount);
-  const w = Math.min(CARD.maxW, (CARD.rowW - (perRow - 1) * CARD.gap) / perRow);
+  // La largeur disponible suit l'écran : sur un téléphone étroit, les cartes
+  // rétrécissent au lieu de sortir du cadre.
+  const rowW = Math.min(CARD.rowW, VIEW.w - 16);
+  const w = Math.min(CARD.maxW, (rowW - (perRow - 1) * CARD.gap) / perRow);
   const rows = [];
   for (let i = 0; i < SKINS.length; i += perRow) rows.push(SKINS.slice(i, i + perRow));
   return { rows, w };
@@ -2921,6 +3131,7 @@ function draw() {
   for (const bonus of bonuses) drawBonus(bonus);
   if (state === 'cat') drawCatScene();
   drawParticles();
+  drawRings();
   for (const fry of fries) drawFry(fry);
   for (const razor of razors) drawRazor(razor);
   if (state !== 'dead' && state !== 'downed') {
@@ -2952,6 +3163,7 @@ function draw() {
       ['Ramasse les canettes, les coupe-ongles, les codes Uber Eats.', 'dim'],
       '',
       ['← → ou A / D pour te diriger · il rebondit tout seul', 'dim'],
+      ['espace, ↑ ou un tap : un salto en l’air, un par rebond', 'dim'],
     ], { align: 'top' });
     // Le sélecteur est calé au-dessus de l'invite : deux rangées de cartes
     // mangent le bas de l'écran, alors sa hauteur commande la position.
@@ -3038,6 +3250,7 @@ function update() {
     }
   }
   stepParticles();
+  stepRings();
   stepToasts();
 }
 
@@ -3088,6 +3301,14 @@ function toTitle() {
 }
 
 window.addEventListener('keydown', (event) => {
+  // L'aide ouverte, le jeu ne reçoit plus rien : les flèches font défiler la
+  // légende et Échap referme.
+  if (helpIsOpen()) {
+    if (event.code === 'Escape') closeHelp();
+    return;
+  }
+  if (event.code === 'KeyH') { openHelp(); return; }
+
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(event.code)) event.preventDefault();
   keys.add(event.code);
 
@@ -3104,6 +3325,10 @@ window.addEventListener('keydown', (event) => {
   if (event.code === 'KeyR') { start(); return; }
   // T comme tenue : le hall des skins, depuis n'importe où.
   if (event.code === 'KeyT') { toTitle(); return; }
+  // Espace, ↑ ou W : le salto. En l'air seulement, et une seule fois par rebond.
+  if (['Space', 'ArrowUp', 'KeyW'].includes(event.code)) {
+    if (state === 'play') { airJump(); return; }
+  }
   // Sur le titre, les chiffres changent de tenue au lieu de lancer la partie.
   if (state === 'title') {
     const digit = /^Digit([1-9])$/.exec(event.code);
@@ -3119,7 +3344,7 @@ window.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('keyup', (event) => keys.delete(event.code));
-window.addEventListener('blur', () => { keys.clear(); touchDir = 0; });
+window.addEventListener('blur', () => { keys.clear(); touchDir = 0; tap = null; });
 
 function pointerDir(event) {
   const rect = canvas.getBoundingClientRect();
@@ -3156,20 +3381,79 @@ canvas.addEventListener('pointerdown', (event) => {
     }
   }
 
+  // Au doigt, le maintien dirige et le tap saute : on note le début du contact,
+  // et c'est au relâcher qu'on tranche entre les deux.
+  tap = { at: performance.now(), x: event.clientX, y: event.clientY };
   touchDir = pointerDir(event);
   canvas.setPointerCapture(event.pointerId);
 });
 canvas.addEventListener('pointermove', (event) => {
   if (touchDir !== 0) touchDir = pointerDir(event);
+  // Un doigt qui glisse dirige : ce n'est plus un tap.
+  if (tap && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > TAP_SLOP) tap = null;
 });
-canvas.addEventListener('pointerup', () => { touchDir = 0; });
-canvas.addEventListener('pointercancel', () => { touchDir = 0; });
+canvas.addEventListener('pointerup', () => {
+  if (tap && performance.now() - tap.at < TAP_TIME) airJump();
+  tap = null;
+  touchDir = 0;
+});
+canvas.addEventListener('pointercancel', () => { tap = null; touchDir = 0; });
+
+/* ------------------------------------------------------- la taille du champ
+
+   Sur ordinateur, la colonne reste celle de toujours : 480 × 720, mise à
+   l'échelle par le CSS. Sur téléphone, le canvas prend tout l'écran à l'échelle
+   1 — la largeur suit celle de l'appareil et la hauteur découvre plus de tour au
+   lieu de zoomer. Un écran trop bas (paysage) retombe sur la colonne à
+   l'échelle, sinon il ne resterait plus de place pour l'écran titre. */
+
+const BASE = { w: 480, h: 720 };
+const FIELD = { w: [320, 900], h: [520, 1600] };   // bornes du champ en plein écran
+
+function fullBleed() {
+  return window.matchMedia('(max-width: 860px)').matches && window.innerHeight >= FIELD.h[0];
+}
 
 function setupCanvas() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const bleed = fullBleed();
+
+  if (bleed) {
+    VIEW.w = Math.round(clamp(window.innerWidth, FIELD.w[0], FIELD.w[1]));
+    VIEW.h = Math.round(clamp(window.innerHeight, FIELD.h[0], FIELD.h[1]));
+  } else {
+    VIEW.w = BASE.w;
+    VIEW.h = BASE.h;
+  }
+
+  document.body.classList.toggle('full-bleed', bleed);
+  canvas.style.width = bleed ? `${VIEW.w}px` : '';
+  canvas.style.height = bleed ? `${VIEW.h}px` : '';
   canvas.width = VIEW.w * dpr;
   canvas.height = VIEW.h * dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+/* Une rotation d'écran change la largeur du champ en pleine partie : ce qui est
+   déjà posé doit y rentrer, sinon des passerelles se retrouvent hors de vue. */
+function refitWorld() {
+  for (const plat of platforms) {
+    plat.w = Math.min(plat.w, VIEW.w - 12);
+    plat.x = clamp(plat.x, 4, Math.max(4, VIEW.w - plat.w - 4));
+    if (plat.type === 'moving') {
+      plat.home = plat.x;
+      plat.range = Math.min(plat.range, Math.max(10, (VIEW.w - plat.w - 12) / 2));
+    }
+  }
+  for (const b of bonuses) b.x = clamp(b.x, 26, Math.max(26, VIEW.w - 26));
+  for (const foot of backFeet) {
+    foot.x = clamp(foot.x, 0, VIEW.w);
+    foot.y = clamp(foot.y, camY - VIEW.h, camY + VIEW.h);
+  }
+  player.x = clamp(player.x, player.w / 2, Math.max(player.w / 2, VIEW.w - player.w / 2));
+  checkpoint.w = Math.min(checkpoint.w, VIEW.w - 12);
+  checkpoint.x = clamp(checkpoint.x, 4, Math.max(4, VIEW.w - checkpoint.w - 4));
+  buildPlatforms();
 }
 
 /* ------------------------------------------------- vignettes de la légende
@@ -3229,8 +3513,54 @@ function renderLegend() {
   }
 }
 
+/* ---------------------------------------------------- l'aide, en overlay
+
+   La légende vivait à côté du canvas ; elle est maintenant un panneau par-dessus,
+   ouvert par le bouton « ? ». Le jeu se met en pause à l'ouverture : lire les
+   règles pendant qu'un rasoir arrive n'aurait aidé personne. */
+
+const helpSheet = document.getElementById('help');
+const helpBtn = document.getElementById('helpOpen');
+let helpResume = false;   // la partie tournait-elle avant l'ouverture ?
+
+function helpIsOpen() {
+  return helpSheet && !helpSheet.hidden;
+}
+
+function openHelp() {
+  if (!helpSheet || helpIsOpen()) return;
+  helpResume = state === 'play';
+  if (helpResume) state = 'pause';
+  helpSheet.hidden = false;
+  helpBtn.setAttribute('aria-expanded', 'true');
+  document.getElementById('helpClose').focus();
+}
+
+function closeHelp() {
+  if (!helpIsOpen()) return;
+  helpSheet.hidden = true;
+  helpBtn.setAttribute('aria-expanded', 'false');
+  if (helpResume && state === 'pause') state = 'play';
+  helpResume = false;
+  canvas.focus();
+}
+
+if (helpSheet) {
+  helpBtn.addEventListener('click', openHelp);
+  document.getElementById('helpClose').addEventListener('click', closeHelp);
+  // Un clic sur le voile ferme ; un clic dans la légende, non.
+  helpSheet.addEventListener('pointerdown', (event) => {
+    if (event.target.hasAttribute('data-close')) closeHelp();
+  });
+}
+
 setupCanvas();
-window.addEventListener('resize', () => { setupCanvas(); renderLegend(); });
+window.addEventListener('resize', () => {
+  const was = { w: VIEW.w, h: VIEW.h };
+  setupCanvas();
+  if (VIEW.w !== was.w || VIEW.h !== was.h) refitWorld();
+  renderLegend();
+});
 loadSkins();
 reset();
 renderLegend();

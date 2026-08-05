@@ -12,9 +12,16 @@
   <div class="stage">
     <canvas id="game" width="480" height="720" tabindex="0"
             aria-label="Jeu de plateformes vertical. Utilise les flèches gauche et droite pour grimper."></canvas>
+    <button class="help-open" id="helpOpen" aria-controls="help" aria-expanded="false"
+            title="Aide et légende (H)"><span aria-hidden="true">?</span><span class="sr">Aide et légende</span></button>
   </div>
 
-  <aside class="legend">
+  <div class="sheet" id="help" hidden>
+    <div class="sheet-veil" data-close></div>
+    <aside class="legend" role="dialog" aria-modal="true" aria-label="Aide et légende">
+      <button class="sheet-close" id="helpClose" title="Fermer (Échap)">
+        <span aria-hidden="true">✕</span><span class="sr">Fermer</span>
+      </button>
     <h1>Alexandre &amp; Sabrina, la princesse aux pieds</h1>
     <p>
       Alexandre — chauve, à lunettes, éperdument amoureux — doit grimper tout en
@@ -22,14 +29,18 @@
       <strong>rasoirs</strong> volants lui coûtent 1&nbsp;Red&nbsp;Bull sur&nbsp;3.
       Les trois perdues, c’est une vie en moins ; il en a <strong>3</strong>. Il y
       a un seul checkpoint, la passerelle verte à mi-hauteur (250&nbsp;m) : une
-      fois atteinte, c’est là qu’il repart.
+      fois atteinte, c’est là qu’il repart. Il rebondit tout seul, et garde
+      <strong>un salto en réserve</strong> pour un second saut en l’air —
+      les deux chevrons verts du HUD disent s’il l’a encore.
     </p>
     <ul>
       <li><kbd>←</kbd> <kbd>→</kbd> ou <kbd>A</kbd> <kbd>D</kbd> — se diriger (il rebondit tout seul)</li>
       <li><kbd>M</kbd> — muet · <kbd>R</kbd> — recommencer · <kbd>P</kbd> — pause</li>
       <li>Fin de partie : le bouton <strong>Rejouer</strong> (ou <kbd>R</kbd>) — le score reste affiché</li>
       <li><kbd>T</kbd> — retour aux <strong>tenues</strong>, à tout moment (aussi un bouton sur l’écran de fin)</li>
-      <li>Au doigt : garde appuyé sur la moitié gauche ou droite de l’écran</li>
+      <li><kbd>Espace</kbd> <kbd>↑</kbd> ou <kbd>W</kbd> — <strong>salto</strong> : un second saut en l’air, rechargé à chaque rebond</li>
+      <li>Au doigt : garde appuyé sur la moitié gauche ou droite pour diriger, <strong>tape brièvement</strong> pour le salto</li>
+      <li><kbd>H</kbd> ou le bouton <kbd>?</kbd> — cette aide (le jeu se met en pause)</li>
     </ul>
 
     <h2>Les tenues</h2>
@@ -57,7 +68,7 @@
       <dt><canvas class="swatch skin" data-skin="gala" role="img" aria-label="Alexandre en costume bleu marine et chemise blanche"></canvas></dt>
       <dd><strong>Le gala</strong> — blazer bleu marine porté ouvert, chemise blanche sans cravate, ceinture cognac à boucle argentée, souliers caramel. Se débloque en <strong>atteignant le sommet avec ses 3 Red Bull</strong></dd>
       <dt><canvas class="swatch skin" data-skin="stanislas" role="img" aria-label="Alexandre en sweat à capuche rouge et chino beige"></canvas></dt>
-      <dd><strong>Stanislas</strong> — sweat à capuche rouge, capuche rabattue, cordons écrus, poche kangourou, t-shirt blanc au col et chino beige. Se débloque avec <strong>un plat Uber Eats servi</strong></dd>
+      <dd><strong>Stanislas</strong> — cheveux bruns, mèche sur le front, sweat à capuche rouge, capuche rabattue, cordons écrus, poche kangourou, t-shirt blanc au col et chino beige. Se débloque avec <strong>un plat Uber Eats servi</strong></dd>
     </dl>
 
     <h2>Les passerelles</h2>
@@ -88,7 +99,8 @@
       <dd>
         <strong>Nvidia</strong> — rare. Son chat débarque, mange ses croquettes,
         devient énorme et le porte <strong>200 m</strong> plus haut — avec
-        bande-son
+        bande-son — puis le <strong>lance sur une passerelle</strong> au lieu de
+        le lâcher dans le vide
       </dd>
       <dt><canvas class="swatch icon" data-bonus="creme" role="img" aria-label="crème pour un crâne luisant"></canvas></dt>
       <dd>
@@ -108,8 +120,9 @@
       <dt><canvas class="swatch icon" data-meal="frites" role="img" aria-label="cornet de frites"></canvas></dt>
       <dd><strong>frites</strong> — il mange salement et en perd la moitié : chaque frite détruit un rasoir</dd>
     </dl>
-    <p class="back"><a href="./">← retour aux pieds</a></p>
-  </aside>
+      <p class="back"><a href="./">← retour aux pieds</a></p>
+    </aside>
+  </div>
 
   <script src="game.js"></script>
 </body>
