@@ -111,9 +111,18 @@ body {
 .legend dd { margin: 0; }
 
 /* Les vignettes sont peintes par game.js avec les fonctions de rendu du jeu. */
-.legend dl.plats, .legend dl.icons { gap: 0.5rem 0.7rem; align-items: center; }
+.legend dl.plats, .legend dl.icons, .legend dl.skins { gap: 0.5rem 0.7rem; align-items: center; }
 .legend .swatch { display: block; }
 .legend dl.icons dt { display: flex; justify-content: center; }
+.legend dl.skins { gap: 0.75rem 0.7rem; }
+.legend dl.skins dt {
+  display: flex;
+  justify-content: center;
+  border: 1px solid var(--panel-line);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.04);
+}
+.legend .skins-intro { margin: 0 0 0.6rem; }
 
 kbd {
   padding: 0.1rem 0.4rem;

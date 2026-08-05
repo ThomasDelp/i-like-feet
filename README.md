@@ -17,7 +17,27 @@ his three Red Bulls (the HP bar is a row of cans).
 | <kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd> | Steer. He bounces on his own. |
 | <kbd>P</kbd> · <kbd>R</kbd> · <kbd>M</kbd> | Pause · restart · mute |
 | Touch | Hold the left or right half of the canvas |
+| <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | Pick a skin, on the title screen — or click its card |
 | Game over / win | Hit the on-canvas **Rejouer** button (armed after ~0.8 s) or <kbd>R</kbd> — a stray tap anywhere else no longer wipes the score off the screen |
+
+### Skins
+
+Three outfits, picked on the title screen — click a card, or press
+<kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd>. The choice and the unlocks are kept in
+`localStorage`, so they survive the tab.
+
+| | | |
+| --- | --- | --- |
+| **Le classique** | black tee, brown trousers | free |
+| **La princesse** | boxers, pink butterfly wings that beat faster as he rises, and a crown | reach **250 m** |
+| **Le super-héros** | swim trunks with the Mistral M on the front | **save Sabrina without losing a life** |
+
+Locked cards are dimmed and show what they cost. Unlock conditions are declared
+next to each skin and evaluated by `checkUnlocks()` — from the play loop for
+altitude, and from `win()` for the flawless run, since that can only be judged
+once. The character is drawn by one `drawAlexandre(skin, pose)`, so the picker
+cards and the legend show the real thing rather than a portrait maintained on
+the side.
 
 ### Lives and checkpoints
 

@@ -61,6 +61,100 @@ const BONUS = {
   creme:   { label: 'CRÈME POUR UN CRÂNE LUISANT !', spark: '#fff3c4', glow: 'rgba(255,246,205,.5)' },
 };
 
+/* --------------------------------------------------------------- les skins
+
+   Une tenue par skin, plus ce qu'il faut débloquer pour y avoir droit. Le
+   premier est offert ; les deux autres s'obtiennent en jouant. `test` est
+   évalué au bon moment par unlock() — jamais en boucle de rendu. */
+
+const SKINS = [
+  {
+    id: 'classique',
+    name: 'Le classique',
+    desc: 't-shirt noir, pantalon marron',
+    shirt: '#2b2f36', collar: '#191c21', sleeves: true,
+    trousers: '#8b5e34', shoes: '#e9e3f5',
+  },
+  {
+    id: 'princesse',
+    name: 'La princesse',
+    desc: 'caleçon, ailes et couronne',
+    bare: true,
+    shorts: '#8ec9f0', shortsBand: '#4f9dcb', shortsDots: '#ffffff',
+    trousers: '#f0c49b', shoes: '#ffd7e6',
+    wings: true, crown: true,
+    need: '250 m atteints',
+    test: () => player.peak >= 250,
+  },
+  {
+    id: 'mistral',
+    name: 'Le super-héros',
+    desc: 'slip de bain Mistral',
+    bare: true, briefs: true,
+    shorts: '#1f2b57', shortsBand: '#ffd166',
+    trousers: '#f0c49b', shoes: '#c62828',
+    logo: true,
+    need: 'Sabrina sauvée, 0 vie perdue',
+    test: () => state === 'win' && lives === START_LIVES,
+  },
+];
+
+const SKIN = Object.fromEntries(SKINS.map((s) => [s.id, s]));
+const FREE_SKIN = SKINS[0].id;
+
+// Le dégradé du logo Mistral, du jaune au rouge, ligne par ligne.
+const MISTRAL_BANDS = ['#ffd53e', '#ffaf2b', '#ff8a20', '#f9611b', '#e63413'];
+// Le M, en 5 colonnes de 5 cases : 1 = case peinte.
+const MISTRAL_M = [
+  [1, 1, 1, 1, 1],
+  [1, 0, 0, 0, 0],
+  [1, 1, 1, 0, 0],
+  [1, 0, 0, 0, 0],
+  [1, 1, 1, 1, 1],
+];
+
+let skin = FREE_SKIN;
+let unlocked = new Set([FREE_SKIN]);
+
+function loadSkins() {
+  try {
+    const saved = (localStorage.getItem('alexandre-skins') || '').split(',');
+    unlocked = new Set([FREE_SKIN, ...saved.filter((id) => id in SKIN)]);
+    const chosen = localStorage.getItem('alexandre-skin');
+    skin = unlocked.has(chosen) ? chosen : FREE_SKIN;
+  } catch { /* pas de stockage, pas de skins */ }
+}
+
+function saveSkins() {
+  try {
+    localStorage.setItem('alexandre-skins', [...unlocked].join(','));
+    localStorage.setItem('alexandre-skin', skin);
+  } catch { /* tant pis pour la prochaine fois */ }
+}
+
+/* Débloque un skin et le fait savoir. Idempotent : le second appel ne fait rien. */
+function unlock(id) {
+  if (unlocked.has(id)) return false;
+  unlocked.add(id);
+  saveSkins();
+  toast(`SKIN DÉBLOQUÉ : ${SKIN[id].name.toUpperCase()}`, player.x, player.y - 62, '#ffd166');
+  sfx.oneup();
+  return true;
+}
+
+/* Passe en revue les skins verrouillés dont la condition vient d'être remplie. */
+function checkUnlocks() {
+  for (const s of SKINS) if (s.test && !unlocked.has(s.id) && s.test()) unlock(s.id);
+}
+
+function pickSkin(id) {
+  if (!unlocked.has(id) || skin === id) return false;
+  skin = id;
+  saveSkins();
+  sfx.pickup();
+  return true;
+}
+
 const canvas = document.getElementById('game');
 // Réassignable : les vignettes de la légende rejouent les mêmes fonctions de
 // dessin dans leur propre contexte (voir drawInto).
@@ -902,6 +996,7 @@ function stepPlayer() {
   if (--player.blink < 0) player.blink = Math.round(rand(90, 240));
 
   player.peak = Math.max(player.peak, (groundY - player.h / 2 - player.y) / 10);
+  checkUnlocks();
 
   // Camera only climbs.
   camY = Math.min(camY, player.y - VIEW.h * 0.55);
@@ -945,6 +1040,7 @@ function win() {
       ['#ffd166', '#ff6f91', '#8be9fd', '#fdf6ef', '#c084fc'], 4.5);
   }
   saveBest();
+  checkUnlocks();   // l'ascension sans perdre de vie ne se juge qu'ici
 }
 
 /* How high he is right now, in metres — this drives difficulty. */
@@ -1562,23 +1658,43 @@ function drawPlayer() {
     }
   }
 
+  drawAlexandre(skin, {
+    rising: player.vy < 0,
+    blink: player.blink < 6,
+    fries: player.fries > 0,
+    trans: player.trans > 0,
+  });
+
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+/* Alexandre lui-même, dessiné à l'origine courante. `pose` le découple de
+   l'état de la partie : le sélecteur de skins et la légende montrent ainsi le
+   vrai personnage sans avoir à simuler un saut. */
+function drawAlexandre(skinId, pose = {}) {
+  const s = SKIN[skinId] || SKIN[FREE_SKIN];
+  const { rising = false, blink = false, fries = false, trans = false } = pose;
+  const kick = rising ? 4 : 9;
+
+  if (s.wings) drawWings(rising);
+
   // shadow-ish outline behind the body keeps him readable on bright platforms
   ctx.fillStyle = 'rgba(0,0,0,.25)';
   roundRect(-12, -4, 24, 24, 8);
   ctx.fill();
 
-  // legs
-  ctx.strokeStyle = '#2d2440';
-  ctx.lineWidth = 4;
+  // legs — plus épaisses quand c'est un pantalon, pour qu'on en voie la couleur
+  ctx.strokeStyle = s.trousers;
+  ctx.lineWidth = s.bare ? 4 : 4.8;
   ctx.lineCap = 'round';
-  const kick = player.vy < 0 ? 4 : 9;
   ctx.beginPath();
   ctx.moveTo(-5, 14);
   ctx.lineTo(-7, 14 + kick);
   ctx.moveTo(5, 14);
   ctx.lineTo(8, 14 + kick - 2);
   ctx.stroke();
-  ctx.strokeStyle = '#e9e3f5';
+  ctx.strokeStyle = s.shoes;
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(-9, 14 + kick);
@@ -1587,19 +1703,35 @@ function drawPlayer() {
   ctx.lineTo(10, 12 + kick);
   ctx.stroke();
 
-  // torso
-  ctx.fillStyle = '#4f6fd0';
-  roundRect(-10, -3, 20, 20, 7);
-  ctx.fill();
-  ctx.fillStyle = '#3a54a8';
-  roundRect(-10, -3, 20, 8, 6);
-  ctx.fill();
+  // torse : habillé, ou nu avec la tenue posée par-dessus
+  if (s.bare) {
+    ctx.fillStyle = '#f0c49b';
+    roundRect(-10, -3, 20, 20, 7);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(224,174,134,.55)';   // un nombril, un soupçon de ventre
+    roundRect(-8, 6, 16, 9, 5);
+    ctx.fill();
+    ctx.fillStyle = '#d79b73';
+    ctx.beginPath();
+    ctx.arc(0, 8, 1.1, 0, Math.PI * 2);
+    ctx.fill();
+    drawUnderwear(s);
+  } else {
+    // le t-shirt s'arrête au-dessus de la taille : sans ça le pantalon ne se
+    // voit pas entre le torse et les chaussures
+    ctx.fillStyle = s.shirt;
+    roundRect(-10, -3, 20, 17, 7);
+    ctx.fill();
+    ctx.fillStyle = s.collar;
+    roundRect(-10, -3, 20, 8, 6);
+    ctx.fill();
+  }
 
   // arms — up when rising, out when falling
   ctx.strokeStyle = '#f0c49b';
   ctx.lineWidth = 3.5;
   ctx.beginPath();
-  if (player.vy < 0) {
+  if (rising) {
     ctx.moveTo(-9, 2); ctx.lineTo(-14, -7);
     ctx.moveTo(9, 2); ctx.lineTo(14, -7);
   } else {
@@ -1607,6 +1739,16 @@ function drawPlayer() {
     ctx.moveTo(9, 2); ctx.lineTo(15, 6);
   }
   ctx.stroke();
+
+  // manches courtes, posées par-dessus l'épaule pour que le t-shirt se lise
+  if (s.sleeves) {
+    ctx.fillStyle = s.shirt;
+    for (const dir of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(dir * 9.6, 0.8, 3.6, 4.4, dir * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 
   // head: bald dome with a highlight
   ctx.fillStyle = '#f0c49b';
@@ -1623,8 +1765,10 @@ function drawPlayer() {
   ctx.arc(11, -11, 2.6, 0, Math.PI * 2);
   ctx.fill();
 
+  if (s.crown) drawTinyCrown();
+
   // cornet de frites, tenu bien serré
-  if (player.fries > 0) {
+  if (fries) {
     ctx.fillStyle = '#c62828';
     ctx.beginPath();
     ctx.moveTo(11, -4); ctx.lineTo(21, -4); ctx.lineTo(19, 8); ctx.lineTo(13, 8);
@@ -1640,7 +1784,7 @@ function drawPlayer() {
     }
   }
 
-  if (player.trans > 0) {
+  if (trans) {
     // Le crâne transcende : pas de lunettes, des yeux blancs et brillants — mais
     // la lumière reste dans l'œil, rien n'en sort.
     ctx.fillStyle = '#ffffff';
@@ -1684,7 +1828,7 @@ function drawPlayer() {
 
     // yeux
     ctx.fillStyle = '#241c33';
-    const eyeH = player.blink < 6 ? 0.6 : 1.7;
+    const eyeH = blink ? 0.6 : 1.7;
     ctx.beginPath();
     ctx.ellipse(-4.4, -12, 1.5, eyeH, 0, 0, Math.PI * 2);
     ctx.ellipse(4.4, -12, 1.5, eyeH, 0, 0, Math.PI * 2);
@@ -1697,9 +1841,116 @@ function drawPlayer() {
   ctx.beginPath();
   ctx.arc(0, -6.5, 3.2, 0.25 * Math.PI, 0.75 * Math.PI);
   ctx.stroke();
+}
 
+/* Le caleçon, ou le slip de bain : la même ceinture, mais une jambe courte pour
+   l'un et une échancrure haute pour l'autre. */
+function drawUnderwear(s) {
+  ctx.fillStyle = s.shorts;
+  ctx.beginPath();
+  if (s.briefs) {
+    // slip : taille haute et hanches échancrées jusqu'en haut de la cuisse
+    ctx.moveTo(-9.4, 4.5);
+    ctx.lineTo(9.4, 4.5);
+    ctx.lineTo(9, 11);
+    ctx.quadraticCurveTo(8.2, 15.4, 4.6, 15.4);
+    ctx.quadraticCurveTo(1.6, 14.8, 0, 13);
+    ctx.quadraticCurveTo(-1.6, 14.8, -4.6, 15.4);
+    ctx.quadraticCurveTo(-8.2, 15.4, -9, 11);
+  } else {
+    // caleçon : deux jambes courtes séparées par une fourche
+    ctx.moveTo(-9.2, 4.5);
+    ctx.lineTo(9.2, 4.5);
+    ctx.lineTo(9.2, 13.4);
+    ctx.quadraticCurveTo(9.2, 15.6, 7, 15.6);
+    ctx.lineTo(2.4, 15.6);
+    ctx.quadraticCurveTo(1.2, 15.6, 0.8, 14);
+    ctx.lineTo(0, 11.4);
+    ctx.lineTo(-0.8, 14);
+    ctx.quadraticCurveTo(-1.2, 15.6, -2.4, 15.6);
+    ctx.lineTo(-7, 15.6);
+    ctx.quadraticCurveTo(-9.2, 15.6, -9.2, 13.4);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = s.shortsBand;                 // la ceinture élastique
+  roundRect(-9.6, 3.6, 19.2, 3.4, 1.7);
+  ctx.fill();
+
+  if (s.shortsDots) {                           // caleçon à pois
+    ctx.fillStyle = s.shortsDots;
+    for (const [dx, dy] of [[-5.6, 9.6], [5.6, 9.6], [-3.4, 12.8], [3.4, 12.8]]) {
+      ctx.beginPath();
+      ctx.arc(dx, dy, 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  if (s.logo) drawMistralLogo(0, 10.4, 1.25);
+}
+
+/* Le M de Mistral : cinq colonnes de cases, une couleur par ligne, du jaune en
+   haut au rouge en bas. `s` est la taille d'une case. */
+function drawMistralLogo(x, y, s) {
+  const cols = MISTRAL_M.length;
+  const rows = MISTRAL_BANDS.length;
+  ctx.save();
+  ctx.translate(x - (cols * s) / 2, y - (rows * s) / 2);
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      if (!MISTRAL_M[c][r]) continue;
+      ctx.fillStyle = MISTRAL_BANDS[r];
+      ctx.fillRect(c * s, r * s, s + 0.06, s + 0.06);   // chevauchement anti-liseré
+    }
+  }
+  ctx.restore();
+}
+
+/* Les ailes de papillon, derrière lui : elles battent quand il monte. */
+function drawWings(rising) {
+  const beat = Math.sin(frames * (rising ? 0.34 : 0.14));
+  ctx.save();
+  for (const dir of [-1, 1]) {
+    ctx.save();
+    ctx.rotate(dir * (0.22 + beat * 0.12));
+    ctx.globalAlpha = 0.82;
+    ctx.fillStyle = '#ffa8d4';
+    ctx.beginPath();                                     // aile haute
+    ctx.ellipse(dir * 14, -6, 11, 8, dir * -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ff86bf';
+    ctx.beginPath();                                     // aile basse
+    ctx.ellipse(dir * 11, 5, 7.5, 6, dir * -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#fff0f7';                           // ocelles
+    ctx.beginPath();
+    ctx.arc(dir * 16, -7, 2.6, 0, Math.PI * 2);
+    ctx.arc(dir * 12, 5, 1.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
   ctx.restore();
   ctx.globalAlpha = 1;
+}
+
+/* La couronne de princesse, posée sur le crâne luisant. */
+function drawTinyCrown() {
+  ctx.fillStyle = '#ffd166';
+  ctx.beginPath();
+  ctx.moveTo(-7.5, -20.5);
+  ctx.lineTo(-6, -27); ctx.lineTo(-2.6, -22.5);
+  ctx.lineTo(0, -29); ctx.lineTo(2.6, -22.5);
+  ctx.lineTo(6, -27); ctx.lineTo(7.5, -20.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#e0a92f';
+  roundRect(-7.8, -21.4, 15.6, 2.4, 1.2);
+  ctx.fill();
+  ctx.fillStyle = '#ff6f91';
+  ctx.beginPath();
+  ctx.arc(0, -24.2, 1.5, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 /* Sabrina, the Foot Princess: a regal foot, crowned, waiting at the summit. */
@@ -2138,6 +2389,87 @@ function drawPanelButton(label, cy) {
   ctx.fillText(armed ? 'ou appuie sur R' : 'regarde ton score…', VIEW.w / 2, y + BTN.h + 17);
 }
 
+/* ------------------------------------------------- le sélecteur de skins
+
+   Trois cartes sur l'écran titre, chacune montrant le vrai personnage dans sa
+   tenue. Les verrouillées affichent ce qu'il reste à faire pour les ouvrir. */
+
+const CARD = { w: 100, h: 126, gap: 13 };
+
+let skinCards = [];      // rects cliquables, en coordonnées VIEW
+
+/* Écrit un texte court sur au plus deux lignes, centré. */
+function drawWrapped(text, cx, y, maxW, lineH) {
+  const words = text.split(' ');
+  const lines = [''];
+  for (const word of words) {
+    const attempt = lines[lines.length - 1] ? `${lines[lines.length - 1]} ${word}` : word;
+    if (ctx.measureText(attempt).width <= maxW || !lines[lines.length - 1]) {
+      lines[lines.length - 1] = attempt;
+    } else if (lines.length < 2) {
+      lines.push(word);
+    } else {
+      lines[1] += '…';
+      break;
+    }
+  }
+  lines.forEach((line, i) => ctx.fillText(line, cx, y + i * lineH));
+}
+
+function drawSkinPicker(cy) {
+  skinCards = [];
+  const span = SKINS.length * CARD.w + (SKINS.length - 1) * CARD.gap;
+  const top = cy - CARD.h / 2;
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '11px ui-rounded, system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(253,246,239,.5)';
+  ctx.fillText('LA TENUE — clique une carte, ou 1 / 2 / 3', VIEW.w / 2, top - 15);
+
+  SKINS.forEach((s, i) => {
+    const x = VIEW.w / 2 - span / 2 + i * (CARD.w + CARD.gap);
+    const open = unlocked.has(s.id);
+    const worn = skin === s.id;
+    skinCards.push({ id: s.id, x, y: top, w: CARD.w, h: CARD.h, open });
+
+    ctx.fillStyle = worn ? 'rgba(255,178,122,.2)' : 'rgba(255,255,255,.05)';
+    roundRect(x, top, CARD.w, CARD.h, 14);
+    ctx.fill();
+    ctx.strokeStyle = worn ? '#ffb27a' : 'rgba(255,255,255,.15)';
+    ctx.lineWidth = worn ? 2 : 1;
+    roundRect(x, top, CARD.w, CARD.h, 14);
+    ctx.stroke();
+
+    // le personnage lui-même, pas une vignette dessinée à part
+    ctx.save();
+    ctx.translate(x + CARD.w / 2, top + 52);
+    ctx.scale(1.3, 1.3);
+    ctx.globalAlpha = open ? 1 : 0.25;
+    drawAlexandre(s.id, { rising: worn });
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    ctx.font = 'bold 11px ui-rounded, system-ui, sans-serif';
+    ctx.fillStyle = open ? '#fdf6ef' : 'rgba(253,246,239,.45)';
+    ctx.fillText(s.name, x + CARD.w / 2, top + 94);
+
+    ctx.font = '9px ui-rounded, system-ui, sans-serif';
+    if (open) {
+      ctx.fillStyle = worn ? '#ffb27a' : 'rgba(253,246,239,.45)';
+      drawWrapped(worn ? 'portée' : s.desc, x + CARD.w / 2, top + 107, CARD.w - 12, 10);
+    } else {
+      ctx.fillStyle = 'rgba(255,178,122,.85)';
+      drawWrapped(`🔒 ${s.need}`, x + CARD.w / 2, top + 107, CARD.w - 12, 10);
+    }
+  });
+}
+
+function skinCardAt(event) {
+  const { x, y } = pointerPos(event);
+  return skinCards.find((c) => x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) || null;
+}
+
 /* Overlay text. `align: 'bottom'` and a lighter `dim` keep the summit reunion
    visible behind the winning message. */
 function panel(lines, { dim = 0.72, align = 'center', button = null } = {}) {
@@ -2147,7 +2479,7 @@ function panel(lines, { dim = 0.72, align = 'center', button = null } = {}) {
   const styleOf = (line) => (Array.isArray(line) ? line[1] : 'body');
   const buttonH = button ? BTN.h + 40 : 0;
   const blockH = lines.reduce((h, line) => h + (styleOf(line) === 'title' ? 58 : 26), 0) + buttonH;
-  let y = align === 'bottom' ? VIEW.h - blockH - 46 : VIEW.h / 2 - blockH / 2;
+  let y = { bottom: VIEW.h - blockH - 46, top: 54 }[align] ?? VIEW.h / 2 - blockH / 2;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (const line of lines) {
@@ -2204,8 +2536,10 @@ function draw() {
   const hits = `${taken} coup${taken === 1 ? '' : 's'} pris`;
 
   replayBtn = null;   // seuls les écrans de fin en posent un
+  skinCards = [];     // idem : seul l'écran titre en pose
 
   if (state === 'title') {
+    // Le bloc de texte est calé en haut : le bas de l'écran est au sélecteur.
     panel([
       ['ALEXANDRE', 'title'],
       '…et Sabrina, la princesse aux pieds',
@@ -2215,8 +2549,13 @@ function draw() {
       ['Ramasse les canettes, les coupe-ongles, les codes Uber Eats.', 'dim'],
       '',
       ['← → ou A / D pour te diriger · il rebondit tout seul', 'dim'],
-      ['appuie ou tape pour commencer', 'big'],
-    ]);
+    ], { align: 'top' });
+    drawSkinPicker(VIEW.h - 168);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 24px ui-rounded, system-ui, sans-serif';
+    ctx.fillStyle = '#fdf6ef';
+    ctx.fillText('appuie ou tape pour commencer', VIEW.w / 2, VIEW.h - 52);
   } else if (state === 'pause') {
     panel([['PAUSE', 'big'], ['appuie sur P pour reprendre', 'dim']]);
   } else if (state === 'downed') {
@@ -2348,6 +2687,14 @@ window.addEventListener('keydown', (event) => {
     return;
   }
   if (event.code === 'KeyR') { start(); return; }
+  // Sur le titre, 1 / 2 / 3 changent de tenue au lieu de lancer la partie.
+  if (state === 'title') {
+    const slot = ['Digit1', 'Digit2', 'Digit3'].indexOf(event.code);
+    if (slot >= 0) {
+      if (SKINS[slot]) pickSkin(SKINS[slot].id);
+      return;
+    }
+  }
   // En fin de partie il faut viser le bouton (ou R) : n'importe quelle touche
   // relancerait avant qu'on ait lu son score.
   if (state === 'title') start();
@@ -2368,7 +2715,16 @@ canvas.addEventListener('pointerdown', (event) => {
     if (hitsReplay(event)) start();     // le reste de l'écran ne relance rien
     return;
   }
-  if (state === 'title') { start(); return; }
+  if (state === 'title') {
+    // Une carte de skin se choisit ; taper à côté lance la partie.
+    const card = skinCardAt(event);
+    if (card) {
+      if (card.open) pickSkin(card.id);
+      return;
+    }
+    start();
+    return;
+  }
   // With noodles in hand, a tap near a platform reels him in instead of steering.
   if (state === 'play' && player.noodles > 0 && !player.grapple) {
     const { x: wx, y: py } = pointerPos(event);
@@ -2402,7 +2758,7 @@ function setupCanvas() {
    rendu dans de petits canvas, plutôt que d'en faire des copies qui
    divergeraient au premier coup de pinceau. */
 
-const SWATCH = { plat: { w: 92, h: 30 }, icon: { w: 42, h: 42 } };
+const SWATCH = { plat: { w: 92, h: 30 }, icon: { w: 42, h: 42 }, skin: { w: 66, h: 80 } };
 
 function drawInto(el, w, h, fn) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -2418,7 +2774,15 @@ function drawInto(el, w, h, fn) {
 }
 
 function renderLegend() {
-  const { plat, icon } = SWATCH;
+  const { plat, icon, skin: card } = SWATCH;
+
+  for (const el of document.querySelectorAll('canvas[data-skin]')) {
+    drawInto(el, card.w, card.h, () => {
+      ctx.translate(card.w / 2, card.h / 2 + 8);
+      ctx.scale(1.15, 1.15);
+      drawAlexandre(el.dataset.skin);
+    });
+  }
 
   for (const el of document.querySelectorAll('canvas[data-plat]')) {
     drawInto(el, plat.w, plat.h, () => {
@@ -2447,6 +2811,7 @@ function renderLegend() {
 
 setupCanvas();
 window.addEventListener('resize', () => { setupCanvas(); renderLegend(); });
+loadSkins();
 reset();
 renderLegend();
 requestAnimationFrame(frame);
