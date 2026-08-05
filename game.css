@@ -32,7 +32,7 @@ body {
   height: min(100% - 0rem, 90vh);
 }
 
-canvas {
+#game {
   height: 100%;
   max-width: 100%;
   aspect-ratio: 2 / 3;
@@ -44,7 +44,7 @@ canvas {
   cursor: pointer;
 }
 
-canvas:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 4px; }
+#game:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 4px; }
 
 .legend {
   max-width: 22rem;
@@ -103,6 +103,11 @@ canvas:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 4px; 
 
 .legend dt { color: var(--ink); white-space: nowrap; }
 .legend dd { margin: 0; }
+
+/* Les vignettes sont peintes par game.js avec les fonctions de rendu du jeu. */
+.legend dl.plats, .legend dl.icons { gap: 0.5rem 0.7rem; align-items: center; }
+.legend .swatch { display: block; }
+.legend dl.icons dt { display: flex; justify-content: center; }
 
 kbd {
   padding: 0.1rem 0.4rem;

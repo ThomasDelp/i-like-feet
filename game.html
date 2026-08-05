@@ -32,35 +32,52 @@
     </ul>
 
     <h2>Les passerelles</h2>
-    <dl>
-      <dt>Violette</dt><dd>solide</dd>
-      <dt>Turquoise</dt><dd>elle coulisse de gauche à droite</dd>
-      <dt>Orange</dt><dd>elle se fissure et disparaît après un rebond</dd>
-      <dt>Jaune</dt><dd>trampoline : elle le propulse deux fois plus haut</dd>
-      <dt>Verte</dt><dd>le checkpoint, à 250 m</dd>
-      <dt>Dorée</dt><dd>le trône de Sabrina, tout en haut</dd>
+    <dl class="plats">
+      <dt><canvas class="swatch plat" data-plat="normal" role="img" aria-label="passerelle solide"></canvas></dt>
+      <dd>solide</dd>
+      <dt><canvas class="swatch plat" data-plat="moving" role="img" aria-label="passerelle coulissante"></canvas></dt>
+      <dd>elle coulisse de gauche à droite</dd>
+      <dt><canvas class="swatch plat" data-plat="fragile" role="img" aria-label="passerelle fissurée"></canvas></dt>
+      <dd>elle se fissure et disparaît après un rebond</dd>
+      <dt><canvas class="swatch plat" data-plat="spring" role="img" aria-label="passerelle trampoline"></canvas></dt>
+      <dd>trampoline : elle le propulse deux fois plus haut</dd>
+      <dt><canvas class="swatch plat" data-plat="rest" role="img" aria-label="passerelle checkpoint"></canvas></dt>
+      <dd>le checkpoint, à 250 m</dd>
+      <dt><canvas class="swatch plat" data-plat="throne" role="img" aria-label="trône de Sabrina"></canvas></dt>
+      <dd>le trône de Sabrina, tout en haut</dd>
     </dl>
 
     <h2>Les bonus</h2>
-    <dl>
-      <dt>🥫 Red Bull</dt><dd>+1 Red Bull — ou une vie s’il est déjà au max</dd>
-      <dt>✂️ Coupe-ongles</dt><dd>8 s de bouclier : les rasoirs éclatent au contact</dd>
-      <dt>🧑‍🦲 Vie</dt><dd>un Alexandre de plus, jusqu’à cinq</dd>
-      <dt>🐱 Nvidia</dt><dd>
-        rare. Son chat débarque, mange ses croquettes, devient énorme et le
-        porte <strong>200 m</strong> plus haut — avec bande-son
+    <dl class="icons">
+      <dt><canvas class="swatch icon" data-bonus="heart" role="img" aria-label="canette Red Bull"></canvas></dt>
+      <dd><strong>Red Bull</strong> — +1 Red Bull, ou une vie s’il est déjà au max</dd>
+      <dt><canvas class="swatch icon" data-bonus="clipper" role="img" aria-label="coupe-ongles"></canvas></dt>
+      <dd><strong>coupe-ongles</strong> — 8 s de bouclier : les rasoirs éclatent au contact</dd>
+      <dt><canvas class="swatch icon" data-bonus="life" role="img" aria-label="vie supplémentaire"></canvas></dt>
+      <dd><strong>vie</strong> — un Alexandre de plus, jusqu’à cinq</dd>
+      <dt><canvas class="swatch icon" data-bonus="cat" role="img" aria-label="Nvidia le chat"></canvas></dt>
+      <dd>
+        <strong>Nvidia</strong> — rare. Son chat débarque, mange ses croquettes,
+        devient énorme et le porte <strong>200 m</strong> plus haut — avec
+        bande-son
       </dd>
-      <dt>🧴 Crème</dt><dd>
-        très rare. Le crâne devient si luisant qu’il fend le monde : l’écran se
-        fracture, le thème bascule dans la transcendance, des passerelles
-        intermédiaires apparaissent, et il perd ses lunettes
+      <dt><canvas class="swatch icon" data-bonus="creme" role="img" aria-label="crème pour un crâne luisant"></canvas></dt>
+      <dd>
+        <strong>crème pour un crâne luisant</strong> — très rare. Le crâne
+        devient si luisant qu’il fend le monde : l’écran se fracture, le thème
+        bascule dans la transcendance, des passerelles intermédiaires
+        apparaissent, et il perd ses lunettes
       </dd>
-      <dt>🛍️ Uber Eats</dt><dd>un code : la roue tourne et sert un plat au hasard</dd>
+      <dt><canvas class="swatch icon" data-bonus="uber" role="img" aria-label="sac Uber Eats"></canvas></dt>
+      <dd><strong>Uber Eats</strong> — un code : la roue tourne et sert un plat au hasard</dd>
     </dl>
-    <dl class="meals">
-      <dt>🍛 Indien</dt><dd>3,4 s de propulsion — il pète, ça monte</dd>
-      <dt>🍜 Nouilles</dt><dd>3 grappins : clique une passerelle, il s’y tracte</dd>
-      <dt>🍟 Frites</dt><dd>il mange salement et en perd la moitié : chaque frite détruit un rasoir</dd>
+    <dl class="icons meals">
+      <dt><canvas class="swatch icon" data-meal="indien" role="img" aria-label="plat indien"></canvas></dt>
+      <dd><strong>indien</strong> — 3,4 s de propulsion : il pète, ça monte, mais jamais plus haut que le trône</dd>
+      <dt><canvas class="swatch icon" data-meal="nouilles" role="img" aria-label="bol de nouilles"></canvas></dt>
+      <dd><strong>nouilles</strong> — 3 grappins : clique une passerelle, il s’y tracte</dd>
+      <dt><canvas class="swatch icon" data-meal="frites" role="img" aria-label="cornet de frites"></canvas></dt>
+      <dd><strong>frites</strong> — il mange salement et en perd la moitié : chaque frite détruit un rasoir</dd>
     </dl>
     <p class="back"><a href="./">← retour aux pieds</a></p>
   </aside>

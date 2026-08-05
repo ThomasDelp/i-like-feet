@@ -62,7 +62,9 @@ const BONUS = {
 };
 
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+// Réassignable : les vignettes de la légende rejouent les mêmes fonctions de
+// dessin dans leur propre contexte (voir drawInto).
+let ctx = canvas.getContext('2d');
 
 const rand = (min, max) => min + Math.random() * (max - min);
 const pick = (list) => list[(Math.random() * list.length) | 0];
@@ -1188,7 +1190,16 @@ function drawBonus(b) {
 
   ctx.save();
   ctx.translate(b.x, y);
+  drawBonusIcon(b.kind, b.bob);
+  ctx.restore();
+}
 
+/* Le dessin d'un bonus, centré sur l'origine courante. La légende s'en sert
+   telle quelle pour montrer les vraies icônes du jeu. */
+function drawBonusIcon(kind, bob) {
+  const b = { kind, bob };
+
+  ctx.save();
   const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 24);
   glow.addColorStop(0, BONUS[b.kind].glow);
   glow.addColorStop(1, 'rgba(0,0,0,0)');
@@ -2385,7 +2396,57 @@ function setupCanvas() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
+/* ------------------------------------------------- vignettes de la légende
+
+   La légende montre les vrais dessins du jeu : on rejoue les mêmes fonctions de
+   rendu dans de petits canvas, plutôt que d'en faire des copies qui
+   divergeraient au premier coup de pinceau. */
+
+const SWATCH = { plat: { w: 92, h: 30 }, icon: { w: 42, h: 42 } };
+
+function drawInto(el, w, h, fn) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  el.width = w * dpr;
+  el.height = h * dpr;
+  el.style.width = `${w}px`;
+  el.style.height = `${h}px`;
+  const target = el.getContext('2d');
+  target.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const live = ctx;
+  ctx = target;
+  try { fn(); } finally { ctx = live; }
+}
+
+function renderLegend() {
+  const { plat, icon } = SWATCH;
+
+  for (const el of document.querySelectorAll('canvas[data-plat]')) {
+    drawInto(el, plat.w, plat.h, () => {
+      const live = camY;
+      camY = -(plat.h - 12);        // la passerelle se pose au bas de la vignette
+      drawPlatform({ x: 3, y: 0, w: plat.w - 6, type: el.dataset.plat, dead: false });
+      camY = live;
+    });
+  }
+
+  for (const el of document.querySelectorAll('canvas[data-bonus]')) {
+    drawInto(el, icon.w, icon.h, () => {
+      ctx.translate(icon.w / 2, icon.h / 2);
+      ctx.scale(0.92, 0.92);
+      drawBonusIcon(el.dataset.bonus, 0.9);
+    });
+  }
+
+  for (const el of document.querySelectorAll('canvas[data-meal]')) {
+    drawInto(el, icon.w, icon.h, () => {
+      ctx.translate(icon.w / 2, icon.h / 2 - 3);
+      drawMealIcon(el.dataset.meal, 1.35);
+    });
+  }
+}
+
 setupCanvas();
-window.addEventListener('resize', setupCanvas);
+window.addEventListener('resize', () => { setupCanvas(); renderLegend(); });
 reset();
+renderLegend();
 requestAnimationFrame(frame);

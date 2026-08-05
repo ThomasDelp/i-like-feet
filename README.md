@@ -79,7 +79,10 @@ climb and only fades if the run ends or you press <kbd>M</kbd>.
 **Platforms:** purple = solid · teal = sliding · orange = cracks after one
 bounce · **yellow = trampoline, launching him twice as high** · green = the
 single checkpoint at 250 m · gold = the throne at the summit · translucent white
-= transcendence-only intermediate ledges.
+= transcendence-only intermediate ledges. The legend beside the game doesn't
+name those colours: it paints each ledge and each pickup into a small canvas
+with the game's own drawing functions, so the swatches can never drift from
+what's on screen.
 
 **Language:** the app is entirely in French; this README is the English dev doc.
 
