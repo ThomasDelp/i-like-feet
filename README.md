@@ -17,17 +17,18 @@ his three Red Bulls (the HP bar is a row of cans).
 | <kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd> | Steer. He bounces on his own. |
 | <kbd>P</kbd> · <kbd>R</kbd> · <kbd>M</kbd> | Pause · restart · mute |
 | Touch | Hold the left or right half of the canvas |
-| <kbd>1</kbd> … <kbd>7</kbd> | Pick a skin, on the title screen — or click its card |
+| <kbd>1</kbd> … <kbd>9</kbd> | Pick a skin, on the title screen — or click its card |
 | <kbd>T</kbd> | Back to the skin picker from anywhere — also a **Tenues** button on the end screens |
 | Game over / win | Hit the on-canvas **Rejouer** button (armed after ~0.8 s) or <kbd>R</kbd> — a stray tap anywhere else no longer wipes the score off the screen |
 
 ### Skins
 
-Seven outfits, picked on the title screen — click a card, or press
-<kbd>1</kbd>…<kbd>7</kbd>. The choice and the unlocks are kept in
-`localStorage`, so they survive the tab. Past four, the cards wrap to a second
-row; `skinPickerHeight()` reports the block's height so the title screen can sit
-it above the prompt.
+Nine outfits, picked on the title screen — click a card, or press
+<kbd>1</kbd>…<kbd>9</kbd>. The choice and the unlocks are kept in
+`localStorage`, so they survive the tab. `skinLayout()` balances the cards into
+rows of at most five and shrinks them to fit the width (nine come out 5 + 4);
+`skinPickerHeight()` reports the block's height so the title screen can sit it
+above the prompt.
 
 | | | |
 | --- | --- | --- |
@@ -38,6 +39,8 @@ it above the prompt.
 | **Le capitaine** | white tee, black shorts, black life vest | **save Sabrina**, whatever it cost |
 | **L’hiver** | black beanie, black coat, blue-and-black scarf with red stripes | reach **400 m** |
 | **Le pyjama** | striped, buttoned, with slippers | **meet Nvidia**, his cat |
+| **Le gala** | navy blazer worn open, white shirt, no tie, cognac belt, caramel dress shoes | reach the throne with **all 3 Red Bulls** |
+| **Stanislas** | red hoodie — hood down, ecru drawstrings, kangaroo pocket, white tee at the collar — and beige chinos | get **a meal off the Uber Eats wheel** |
 
 An unlock is announced on the end screen that earned it, in gold: the toast it
 also fires is drawn under the panel and at the player's position, where nobody
@@ -50,9 +53,12 @@ altitude and for the cat (`player.metCat`, set when the cutscene starts), and
 from `win()` for the two that hang on the summit, since those can only be judged
 once. The character is drawn by one `drawAlexandre(skin, pose)`, so the picker
 cards and the legend show the real thing rather than a portrait maintained on
-the side. Each garment is a flag on the skin (`jacket`, `vest`, `coat`,
-`beanie`, `scarf`, `stripes`, `hipShorts`) with its own small draw function, so
-outfits mix rather than each one forking the body.
+the side. Each garment is a flag on the skin (`jacket`, `blazer`, `hoodie`,
+`vest`, `coat`, `beanie`, `scarf`, `stripes`, `hipShorts`) with its own small
+draw function, so outfits mix rather than each one forking the body. `bodyW` /
+`bodyH` widen or lengthen the torso — a coat hangs lower, an oversized hoodie
+spreads — and `sleeveColor` lets a jacket keep its own sleeves over a white
+shirt.
 
 ### Lives and checkpoints
 

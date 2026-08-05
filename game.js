@@ -94,7 +94,7 @@ const SKINS = [
     shorts: '#1f2b57', shortsBand: '#ffd166',
     trousers: '#f0c49b', shoes: '#c62828',
     logo: true,
-    need: 'Sabrina sauvée, 0 vie perdue',
+    need: 'sommet, 0 vie perdue',
     // `>=` et pas `===` : une canette prise à pleine vie en ajoute une, et une
     // course parfaite finirait à 4 vies — ce serait le comble de la fermer là.
     test: () => state === 'win' && lives >= START_LIVES,
@@ -123,9 +123,9 @@ const SKINS = [
   {
     id: 'hiver',
     name: 'L’hiver',
-    desc: 'bonnet, manteau, écharpe',
+    desc: 'manteau et écharpe',
     shirt: '#191c22', collar: '#101319', sleeves: true,
-    coat: true, buttons: '#3d424c',
+    bodyH: 21, coat: true, buttons: '#3d424c',   // un manteau, ça descend plus bas
     beanie: true, hat: '#15181e', hatBand: '#22262e', pompom: '#2b3038',
     scarf: '#2f63b5', scarfAlt: '#151820', scarfDot: '#d33b34',
     trousers: '#2b2f36', shoes: '#4a3b30',
@@ -141,6 +141,29 @@ const SKINS = [
     trousers: '#8fa4e0', shoes: '#f6dfae',
     need: 'Nvidia rencontré',
     test: () => player.metCat,
+  },
+  {
+    id: 'gala',
+    name: 'Le gala',
+    desc: 'costume marine, chemise blanche',
+    shirt: '#f2f4fa', collar: '#e6eaf4', sleeves: true, sleeveColor: '#232a3a',
+    blazer: '#232a3a', lapel: '#2c3547', placket: 'rgba(120,132,160,.6)',
+    belt: '#8a4b2a', buckle: '#cfd3da',
+    trousers: '#232a3a', shoes: '#b0714a',
+    need: 'sommet, 3 Red Bull',
+    test: () => state === 'win' && player.hp === MAX_HP,
+  },
+  {
+    id: 'stanislas',
+    name: 'Stanislas',
+    desc: 'sweat rouge, chino beige',
+    shirt: '#c0392f', collar: '#a72f27', sleeves: true,
+    bodyW: 22, bodyH: 19,                  // le sweat est ample, il tombe bas
+    hoodie: true, hood: '#b3332a', hem: '#a72f27', pocket: 'rgba(0,0,0,.12)',
+    print: 'rgba(255,255,255,.16)', tee: '#f4f2ee', cord: '#f0e6d8',
+    trousers: '#d8c8a6', shoes: '#efeae2',
+    need: 'un plat Uber Eats servi',
+    test: () => player.ateMeal,
   },
 ];
 
@@ -318,6 +341,7 @@ function reset() {
     squash: 0, blink: 0, peak: 0,
     jet: 0, fries: 0, noodles: 0, grapple: null, trans: 0,
     metCat: false,   // le chat croisé au moins une fois : ça vaut un pyjama
+    ateMeal: false,  // idem pour un plat Uber Eats servi
   };
 
   lives = START_LIVES;
@@ -527,6 +551,7 @@ function serveMeal(meal) {
     player.fries = FRIES_TIME;
     sfx.crunch();
   }
+  player.ateMeal = true;   // un plat servi, ça vaut bien un sweat à capuche
   toast(MEAL[meal].label, player.x, player.y - 46, MEAL[meal].spark);
 }
 
@@ -1728,6 +1753,7 @@ function drawAlexandre(skinId, pose = {}) {
   const kick = rising ? 4 : 9;
 
   if (s.wings) drawWings(rising);
+  if (s.hood) drawHood(s);      // rabattue derrière la nuque : avant tout le reste
 
   // shadow-ish outline behind the body keeps him readable on bright platforms
   ctx.fillStyle = 'rgba(0,0,0,.25)';
@@ -1768,22 +1794,31 @@ function drawAlexandre(skinId, pose = {}) {
     drawUnderwear(s);
   } else {
     // le haut s'arrête au-dessus de la taille : sans ça le pantalon ne se voit
-    // pas entre le torse et les chaussures. Un manteau, lui, descend plus bas.
-    const bodyH = s.coat ? 21 : 17;
+    // pas entre le torse et les chaussures. Un manteau descend plus bas, un
+    // sweat ample déborde aussi sur les côtés — d'où bodyW / bodyH.
+    const bw = s.bodyW || 20;
+    const bh = s.bodyH || 17;
     ctx.fillStyle = s.shirt;
-    roundRect(-10, -3, 20, bodyH, 7);
+    roundRect(-bw / 2, -3, bw, bh, 7);
     ctx.fill();
-    if (s.stripes) drawStripes(s, bodyH);
+    if (s.stripes) drawStripes(s, bw, bh);
     ctx.fillStyle = s.collar;
-    roundRect(-10, -3, 20, 8, 6);
+    roundRect(-bw / 2, -3, bw, 8, 6);
     ctx.fill();
     if (s.hipShorts) drawHipShorts(s);   // posé par-dessus le bas du t-shirt
     if (s.belt) {
       ctx.fillStyle = s.belt;
       roundRect(-9.8, 11.6, 19.6, 3, 1.4);
       ctx.fill();
+      if (s.buckle) {
+        ctx.fillStyle = s.buckle;
+        roundRect(-2, 11.4, 4, 3.4, 1);
+        ctx.fill();
+      }
     }
-    if (s.jacket) drawJacket(s);
+    if (s.jacket) drawJacket(s, bw, bh);
+    if (s.blazer) drawBlazer(s, bw, bh);
+    if (s.hoodie) drawHoodie(s, bw, bh);
     if (s.coat) drawCoat(s);
     if (s.vest) drawLifeVest(s);
     if (s.buttons && !s.coat) drawButtons(s);
@@ -1803,12 +1838,14 @@ function drawAlexandre(skinId, pose = {}) {
   }
   ctx.stroke();
 
-  // manches courtes, posées par-dessus l'épaule pour que le t-shirt se lise
+  // manches courtes, posées par-dessus l'épaule pour que le haut se lise. Une
+  // veste par-dessus une chemise a ses propres manches : d'où sleeveColor.
   if (s.sleeves) {
-    ctx.fillStyle = s.shirt;
+    ctx.fillStyle = s.sleeveColor || s.shirt;
+    const at = (s.bodyW || 20) / 2 - 0.4;
     for (const dir of [-1, 1]) {
       ctx.beginPath();
-      ctx.ellipse(dir * 9.6, 0.8, 3.6, 4.4, dir * 0.35, 0, Math.PI * 2);
+      ctx.ellipse(dir * at, 0.8, 3.6, 4.4, dir * 0.35, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -1981,9 +2018,9 @@ function drawHipShorts(s) {
 
 /* Le perfecto : fermé en biais, col relevé, un bout de t-shirt à l'échancrure.
    Tout est détouré au torse, les revers et la fermeture mordant sur ses bords. */
-function drawJacket(s) {
+function drawJacket(s, bw, bh) {
   ctx.save();
-  roundRect(-10, -3, 20, 17, 7);
+  roundRect(-bw / 2, -3, bw, bh, 7);
   ctx.clip();
 
   ctx.fillStyle = s.inner;                      // le t-shirt, sous le col
@@ -2099,13 +2136,97 @@ function drawBeanie(s) {
 }
 
 /* Les rayures du pyjama, détourées à la forme du haut. */
-function drawStripes(s, bodyH) {
+function drawStripes(s, bw, bh) {
   ctx.save();
-  roundRect(-10, -3, 20, bodyH, 7);
+  roundRect(-bw / 2, -3, bw, bh, 7);
   ctx.clip();
   ctx.fillStyle = s.stripes;
-  for (let x = -8.2; x < 10; x += 4.4) ctx.fillRect(x, -3, 1.7, bodyH);
+  for (let x = -bw / 2 + 1.8; x < bw / 2; x += 4.4) ctx.fillRect(x, -3, 1.7, bh);
   ctx.restore();
+}
+
+/* Le blazer de gala, porté ouvert : deux pans qui s'écartent vers le bas sur la
+   chemise blanche, revers crantés par-dessus. */
+function drawBlazer(s, bw, bh) {
+  ctx.save();
+  roundRect(-bw / 2, -3, bw, bh, 7);
+  ctx.clip();
+
+  ctx.fillStyle = s.blazer;
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(dir * bw / 2, -3);
+    ctx.lineTo(dir * 3.2, -3);
+    ctx.lineTo(dir * 5.8, bh - 3);
+    ctx.lineTo(dir * bw / 2, bh - 3);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.fillStyle = s.lapel;                      // les revers, rabattus en pointe
+  for (const dir of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(dir * 3.2, -3);
+    ctx.lineTo(dir * 8.8, -1);
+    ctx.lineTo(dir * 6.2, 7.4);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = s.placket;                  // col ouvert, sans cravate, et
+  ctx.lineWidth = 0.7;                          // la patte de boutonnage
+  ctx.lineCap = 'butt';
+  ctx.beginPath();
+  ctx.moveTo(-2.4, -0.6); ctx.lineTo(0, 4.2); ctx.lineTo(2.4, -0.6);
+  ctx.moveTo(0, 4.8); ctx.lineTo(0, 11.4);
+  ctx.stroke();
+}
+
+/* La capuche rabattue, derrière la tête : dessinée avant le corps. */
+function drawHood(s) {
+  ctx.fillStyle = s.hood;
+  ctx.beginPath();
+  ctx.ellipse(0, -4.5, 13.4, 9.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/* Le sweat à capuche : bord-côte en bas, poche kangourou, logo rond presque
+   effacé, cordons, et le t-shirt blanc qui dépasse au col. */
+function drawHoodie(s, bw, bh) {
+  ctx.save();
+  roundRect(-bw / 2, -3, bw, bh, 7);
+  ctx.clip();
+
+  ctx.fillStyle = s.hem;
+  roundRect(-bw / 2, bh - 8.4, bw, 5.4, 2);
+  ctx.fill();
+
+  ctx.fillStyle = s.pocket;
+  roundRect(-7.8, 6, 15.6, 5.4, 2.4);
+  ctx.fill();
+
+  ctx.fillStyle = s.print;
+  ctx.beginPath();
+  ctx.arc(-3.6, 2.6, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = s.tee;                        // le t-shirt, sous le col
+  ctx.beginPath();
+  ctx.moveTo(-3.6, -0.8);
+  ctx.lineTo(3.6, -0.8);
+  ctx.lineTo(0, 3.2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = s.cord;                     // les deux cordons
+  ctx.lineWidth = 1;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-2.6, 1.6); ctx.lineTo(-3.2, 7.6);
+  ctx.moveTo(2.6, 1.6); ctx.lineTo(3.4, 7.4);
+  ctx.stroke();
 }
 
 /* La rangée de boutons d'un haut de pyjama. */
@@ -2641,9 +2762,9 @@ function unlockLines() {
 
    Une carte par tenue sur l'écran titre, chacune montrant le vrai personnage
    dedans. Les verrouillées affichent ce qu'il reste à faire pour les ouvrir.
-   Au-delà de quatre, les cartes passent à la ligne. */
+   Au-delà de cinq, les cartes passent à la ligne et rétrécissent. */
 
-const CARD = { w: 100, h: 108, gap: 12, perRow: 4 };
+const CARD = { maxW: 100, h: 106, gap: 10, perRow: 5, rowW: 464 };
 
 let skinCards = [];      // rects cliquables, en coordonnées VIEW
 
@@ -2665,22 +2786,26 @@ function drawWrapped(text, cx, y, maxW, lineH) {
   lines.forEach((line, i) => ctx.fillText(line, cx, y + i * lineH));
 }
 
-/* Les tenues découpées en rangées d'au plus CARD.perRow, la dernière rangée
-   centrée sur ce qu'il lui reste. */
-function skinRows() {
+/* Les tenues en rangées équilibrées — 9 cartes font 5 + 4, pas 5 + 4 orphelines
+   — et rétrécies pour tenir dans la largeur : une tenue de plus ne doit ni
+   déborder de l'écran ni écraser le reste de l'écran titre. */
+function skinLayout() {
+  const rowCount = Math.ceil(SKINS.length / CARD.perRow);
+  const perRow = Math.ceil(SKINS.length / rowCount);
+  const w = Math.min(CARD.maxW, (CARD.rowW - (perRow - 1) * CARD.gap) / perRow);
   const rows = [];
-  for (let i = 0; i < SKINS.length; i += CARD.perRow) rows.push(SKINS.slice(i, i + CARD.perRow));
-  return rows;
+  for (let i = 0; i < SKINS.length; i += perRow) rows.push(SKINS.slice(i, i + perRow));
+  return { rows, w };
 }
 
 function skinPickerHeight() {
-  const rows = skinRows().length;
-  return rows * CARD.h + (rows - 1) * CARD.gap;
+  const rowCount = Math.ceil(SKINS.length / CARD.perRow);
+  return rowCount * CARD.h + (rowCount - 1) * CARD.gap;
 }
 
 function drawSkinPicker(cy) {
   skinCards = [];
-  const rows = skinRows();
+  const { rows, w } = skinLayout();
   const first = cy - skinPickerHeight() / 2;
 
   ctx.textAlign = 'center';
@@ -2690,29 +2815,29 @@ function drawSkinPicker(cy) {
   ctx.fillText(`LA TENUE — clique une carte, ou 1 → ${SKINS.length}`, VIEW.w / 2, first - 14);
 
   rows.forEach((row, r) => {
-    const span = row.length * CARD.w + (row.length - 1) * CARD.gap;
+    const span = row.length * w + (row.length - 1) * CARD.gap;
     const top = first + r * (CARD.h + CARD.gap);
-    row.forEach((s, i) => drawSkinCard(s, VIEW.w / 2 - span / 2 + i * (CARD.w + CARD.gap), top));
+    row.forEach((s, i) => drawSkinCard(s, VIEW.w / 2 - span / 2 + i * (w + CARD.gap), top, w));
   });
 }
 
-function drawSkinCard(s, x, top) {
+function drawSkinCard(s, x, top, w) {
   const open = unlocked.has(s.id);
   const worn = skin === s.id;
-  skinCards.push({ id: s.id, x, y: top, w: CARD.w, h: CARD.h, open });
+  skinCards.push({ id: s.id, x, y: top, w, h: CARD.h, open });
 
   ctx.fillStyle = worn ? 'rgba(255,178,122,.2)' : 'rgba(255,255,255,.05)';
-  roundRect(x, top, CARD.w, CARD.h, 14);
+  roundRect(x, top, w, CARD.h, 14);
   ctx.fill();
   ctx.strokeStyle = worn ? '#ffb27a' : 'rgba(255,255,255,.15)';
   ctx.lineWidth = worn ? 2 : 1;
-  roundRect(x, top, CARD.w, CARD.h, 14);
+  roundRect(x, top, w, CARD.h, 14);
   ctx.stroke();
 
   // le personnage lui-même, pas une vignette dessinée à part
   ctx.save();
-  ctx.translate(x + CARD.w / 2, top + 44);
-  ctx.scale(1.12, 1.12);
+  ctx.translate(x + w / 2, top + 42);
+  ctx.scale(w / 85, w / 85);
   ctx.globalAlpha = open ? 1 : 0.25;
   drawAlexandre(s.id, { rising: worn });
   ctx.restore();
@@ -2722,15 +2847,15 @@ function drawSkinCard(s, x, top) {
   ctx.textBaseline = 'middle';
   ctx.font = 'bold 11px ui-rounded, system-ui, sans-serif';
   ctx.fillStyle = open ? '#fdf6ef' : 'rgba(253,246,239,.45)';
-  ctx.fillText(s.name, x + CARD.w / 2, top + 80);
+  ctx.fillText(s.name, x + w / 2, top + 79);
 
   ctx.font = '9px ui-rounded, system-ui, sans-serif';
   if (open) {
     ctx.fillStyle = worn ? '#ffb27a' : 'rgba(253,246,239,.45)';
-    drawWrapped(worn ? 'portée' : s.desc, x + CARD.w / 2, top + 92, CARD.w - 12, 10);
+    drawWrapped(worn ? 'portée' : s.desc, x + w / 2, top + 91, w - 8, 10);
   } else {
     ctx.fillStyle = 'rgba(255,178,122,.85)';
-    drawWrapped(`🔒 ${s.need}`, x + CARD.w / 2, top + 92, CARD.w - 12, 10);
+    drawWrapped(`🔒 ${s.need}`, x + w / 2, top + 91, w - 8, 10);
   }
 }
 
