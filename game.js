@@ -11,7 +11,10 @@ const GOAL = 5000;            // world pixels from the ground up to the princess
 const GRAVITY = 0.42;
 const JUMP = -12.6;           // apex ≈ 189px, so keep platform gaps under ~150
 const AIR_JUMP = -11.4;       // le second saut, un cheveu plus court que le premier
-const FLIP_TIME = 15;         // frames du salto, et de l'anneau de poussière
+const AIR_JUMP_COOL = 5 * 60; // 5 s de recharge entre deux saltos
+const AIR_FLASH = 22;         // frames d'éclat quand le salto se recharge
+const FLIP_TIME = 27;         // frames du salto : assez long pour qu'on le lise
+const FLIP_TILT = 0.4;        // l'axe du salto, incliné : c'est lui qui donne le relief
 const MOVE_ACCEL = 0.62;
 const MOVE_MAX = 5.4;
 const FRICTION = 0.9;
@@ -19,7 +22,7 @@ const MAX_HP = 3;
 const INVULN = 112;           // frames of mercy after a razor connects
 const START_LIVES = 3;
 const MAX_LIVES = 5;
-const CLIPPER_TIME = 8 * 60;  // how long a razor clipper keeps razors off him
+const STEEL_HITS = 2;         // contacts encaissés par le corps d'acier, sans chrono
 const SPRING_VY = -20.5;      // trampoline launch, ~2.5 platforms in one go
 const MID_REST = -GOAL / 2;   // the one and only checkpoint, halfway up
 const DOWN_TIME = 78;         // frames of the "he's down" beat before respawning
@@ -58,7 +61,7 @@ const MEAL = {
 const BONUS = {
   heart:   { label: '+1 RED BULL',      spark: '#ffd166', glow: 'rgba(255,209,102,.42)' },
   life:    { label: '1 VIE EN PLUS',    spark: '#ff6f91', glow: 'rgba(255,111,145,.4)' },
-  clipper: { label: 'COUPE-ONGLES !',   spark: '#8bd7ff', glow: 'rgba(139,215,255,.4)' },
+  steel:   { label: 'CORPS D’ACIER !',  spark: '#cfd8e3', glow: 'rgba(207,216,227,.42)' },
   cat:     { label: 'NVIDIA !',         spark: '#76b900', glow: 'rgba(118,185,0,.45)' },
   uber:    { label: 'UBER EATS !',      spark: '#06c167', glow: 'rgba(6,193,103,.42)' },
   creme:   { label: 'CRÈME POUR UN CRÂNE LUISANT !', spark: '#fff3c4', glow: 'rgba(255,246,205,.5)' },
@@ -237,6 +240,7 @@ let ctx = canvas.getContext('2d');
 const rand = (min, max) => min + Math.random() * (max - min);
 const pick = (list) => list[(Math.random() * list.length) | 0];
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+const lerp = (a, b, t) => a + (b - a) * t;
 
 /* ---------------------------------------------------------------- audio */
 
@@ -305,11 +309,18 @@ const sfx = {
   crunch: () => beep(rand(190, 250), 0.05, 'square', 0.03),
   tick: () => beep(1200, 0.03, 'square', 0.03),
   transcend: () => [523, 784, 1047, 1319, 1568].forEach((f, i) => setTimeout(() => beep(f, 0.5, 'triangle', 0.05), i * 110)),
+  // un rasoir détruit (par une frite, par exemple) : un petit tic sec
   clip: () => beep(1500, 0.05, 'square', 0.045),
+  // l'haltère : un grondement puis deux résonances métalliques
+  steel: () => { beep(150, 0.18, 'square', 0.06); setTimeout(() => beep(1180, 0.24, 'triangle', 0.05), 70); setTimeout(() => beep(880, 0.3, 'triangle', 0.032), 160); },
+  // un rasoir contre l'acier : ça sonne, ça ne saigne pas
+  clank: () => { beep(1500, 0.05, 'square', 0.05); setTimeout(() => beep(560, 0.2, 'sawtooth', 0.04), 45); },
   check: () => { beep(523, 0.1, 'triangle', 0.06); setTimeout(() => beep(784, 0.16, 'triangle', 0.06), 90); },
   fart: () => [0, 90, 165].forEach((d, i) => setTimeout(() => beep(rand(58, 104) - i * 6, 0.14, 'sawtooth', 0.055), d)),
   noodle: () => { beep(880, 0.06, 'triangle', 0.05); setTimeout(() => beep(560, 0.1, 'triangle', 0.045), 60); },
   flip: () => { beep(520, 0.07, 'square', 0.045); setTimeout(() => beep(1040, 0.1, 'triangle', 0.04), 60); },
+  // le salto rechargé : discret, les yeux sont sur les passerelles, pas sur le HUD
+  ready: () => beep(1180, 0.07, 'triangle', 0.028),
 };
 
 /* ----------------------------------------------------------------- input */
@@ -353,10 +364,12 @@ function reset() {
     x: VIEW.w / 2, y: groundY - 40,
     w: 26, h: 40,
     vx: 0, vy: 0,
-    face: 1, hp: MAX_HP, invuln: 0, clipper: 0,
+    face: 1, hp: MAX_HP, invuln: 0, steel: 0,
     squash: 0, blink: 0, peak: 0,
     jet: 0, fries: 0, noodles: 0, grapple: null, trans: 0,
-    airJump: 1, flip: 0,   // un saut en l'air, rechargé à chaque rebond
+    // La partie démarre salto non chargé : il faut les 5 s comme après chaque
+    // usage. On ne l'a jamais gratuitement.
+    airCool: AIR_JUMP_COOL, airFlash: 0, flip: 0, flipFace: 1,
     metCat: false,   // le chat croisé au moins une fois : ça vaut un pyjama
     ateMeal: false,  // idem pour un plat Uber Eats servi
   };
@@ -477,8 +490,8 @@ function maybeBonus(plat, climbed) {
 
   if (plat.type === 'rest') {
     if (roll < 0.25) kind = 'heart';
-    else if (roll < 0.35) kind = 'clipper';
-  } else if (roll < 0.018) kind = 'clipper';
+    else if (roll < 0.35) kind = 'steel';
+  } else if (roll < 0.018) kind = 'steel';
   else if (roll < 0.038) kind = 'heart';
   else if (roll < 0.056) kind = 'uber';
   else if (roll < 0.068 && climbed > 600) kind = 'cat';
@@ -541,9 +554,8 @@ function collect(b) {
     lives = Math.min(MAX_LIVES, lives + 1);
     if (lives === MAX_LIVES) label = 'VIES AU MAX';
     sfx.oneup();
-  } else if (b.kind === 'clipper') {
-    player.clipper = CLIPPER_TIME;
-    sfx.pickup();
+  } else if (b.kind === 'steel') {
+    steelUp();
   } else if (b.kind === 'cat') {
     startCat();
   } else if (b.kind === 'creme') {
@@ -870,7 +882,6 @@ function stepCat() {
     player.x = to.x;
     player.y = to.y;
     player.vy = 1;              // juste au-dessus de la passerelle : il rebondit dessus
-    player.airJump = 1;
     player.invuln = 80;
     razorTimer = Math.max(razorTimer, 100);
     burst(player.x, player.y, 22, ['#76b900', '#d7ff8a', '#fdf6ef'], 4.2);
@@ -963,8 +974,11 @@ function stepRazors() {
     razor.y += razor.vy;
     razor.rot += razor.spin;
     if (razor.gone) continue;
-    if (player.clipper > 0 && overlapsPlayer(razor.x, razor.y, razor.r + 14)) clip(razor);
-    else if (player.invuln === 0 && hitsPlayer(razor)) hurt(razor);
+    // L'acier ne tient plus les rasoirs à distance : il les encaisse au contact.
+    if (player.invuln === 0 && hitsPlayer(razor)) {
+      if (player.steel > 0) steelHit(razor);
+      else hurt(razor);
+    }
   }
 
   razors = razors.filter((n) => n.x > -60 && n.x < VIEW.w + 60 && n.y < camY + VIEW.h + 120 && !n.gone);
@@ -981,11 +995,44 @@ function hitsPlayer(razor) {
   return overlapsPlayer(razor.x, razor.y, razor.r * 0.8);
 }
 
-/* Clipped, not hurt: the razor clipper turns razors into confetti. */
-function clip(razor) {
+/* ------------------------------------------------------------ corps d'acier
+
+   L'haltère le rend si musclé que ses habits craquent et que ses muscles
+   passent à l'acier. Pas de chrono : l'acier tient jusqu'à STEEL_HITS rasoirs.
+   Le premier contact lui arrache des plaques — on voit la peau dessous —, le
+   second emporte le reste et il redevient l'Alexandre habillé du début. */
+
+const STEEL_MERCY = 40;   // frames d'accalmie : une volée n'emporte pas deux plaques
+
+function steelUp() {
+  player.steel = STEEL_HITS;
+  // les habits qui craquent : des lambeaux aux couleurs de la tenue portée
+  const s = SKIN[skin] || SKIN[FREE_SKIN];
+  const rags = [s.shirt, s.shorts, s.trousers, s.collar, '#fdf6ef'].filter(Boolean);
+  burst(player.x, player.y, 16, rags, 4.2);
+  burst(player.x, player.y - 4, 12, ['#cfd8e3', '#9aa7b4', '#eef3f8'], 3.4);
+  shake = 10;
+  sfx.steel();
+}
+
+/* Un rasoir contre l'acier : la plaque part, pas le Red Bull. */
+function steelHit(razor) {
   razor.gone = true;
-  burst(razor.x, razor.y, 9, ['#8bd7ff', '#fdf6ef', '#dbe7f5'], 2.6);
-  sfx.clip();
+  player.steel -= 1;
+  player.invuln = STEEL_MERCY;
+  shake = 12;
+  // les éclats d'acier partent du point de contact
+  burst(razor.x, razor.y, 14, ['#cfd8e3', '#9aa7b4', '#eef3f8', '#7d8794'], 3.6);
+  if (player.steel > 0) {
+    // il reste de l'acier, mais troué : quelques plaques tombent le long du corps
+    burst(player.x, player.y + 6, 7, ['#9aa7b4', '#cfd8e3'], 2.4);
+    toast('L’ACIER SE FISSURE', player.x, player.y - 46, '#cfd8e3');
+  } else {
+    // la dernière plaque : tout se détache et il se retrouve rhabillé
+    burst(player.x, player.y, 20, ['#cfd8e3', '#9aa7b4', '#7d8794', '#eef3f8'], 4.6);
+    toast('L’ACIER A LÂCHÉ', player.x, player.y - 46, '#9aa7b4');
+  }
+  sfx.clank();
 }
 
 function hurt(razor) {
@@ -1005,7 +1052,7 @@ function downed(reason) {
   lives -= 1;
   deathReason = reason;
   player.hp = 0;
-  player.clipper = 0;
+  player.steel = 0;
   player.jet = 0;
   player.fries = 0;
   player.noodles = 0;
@@ -1041,6 +1088,7 @@ function respawn() {
   player.vy = 0;
   player.hp = MAX_HP;
   player.invuln = INVULN;
+  player.airCool = AIR_JUMP_COOL;   // au checkpoint aussi, il attend ses 5 s
   razorTimer = 130;
   restPlaced = checkpoint.type === 'rest';   // the mid ledge is behind him now
 
@@ -1080,6 +1128,14 @@ function stepParticles() {
 /* ------------------------------------------------------------------ player */
 
 function stepPlayer() {
+  // Le salto revient au bout de AIR_JUMP_COOL, et le fait entendre. Avant le
+  // grappin : la recharge tourne même pendant qu'il pend au bout d'une nouille.
+  if (player.airCool > 0 && --player.airCool === 0) {
+    player.airFlash = AIR_FLASH;
+    sfx.ready();
+  }
+  if (player.airFlash > 0) player.airFlash--;
+
   if (player.grapple) {
     stepGrapple();
     return;
@@ -1132,7 +1188,6 @@ function stepPlayer() {
   }
 
   if (player.invuln > 0) player.invuln--;
-  if (player.clipper > 0) player.clipper--;
   if (player.fries > 0) {
     player.fries--;
     if (player.fries % FRY_EVERY === 0) ejectFry();
@@ -1170,7 +1225,6 @@ function land(plat) {
   player.y = plat.y - player.h / 2;
   player.vy = JUMP;
   player.squash = 9;
-  player.airJump = 1;      // le salto se recharge à chaque rebond
   burst(player.x, plat.y, 5, ['rgba(255,255,255,.7)', '#e8c9ff'], 1.8);
   sfx.jump();
 
@@ -1194,19 +1248,29 @@ function land(plat) {
 
 /* ------------------------------------------------------------- le double saut
 
-   Un seul saut en l'air, rechargé au rebond suivant : il ne remplace pas le
-   rebond, il rattrape un écart mal jugé. Le salto et l'anneau de poussière sont
-   là pour qu'on voie tout de suite qu'il a été consommé. */
+   Un saut en l'air, puis cinq secondes de recharge : il ne remplace pas le
+   rebond, il rattrape un écart mal jugé, et il faut choisir quand le griller.
+   Le rebond ne le recharge pas — seul le temps le fait, et la partie commence
+   recharge en cours : il ne l'a jamais gratuitement. Le salto et l'anneau de
+   poussière disent qu'il vient d'être consommé ; le retour se voit aux pieds
+   qui scintillent de propreté, et s'entend au petit blip. */
 
 function airJump() {
-  if (state !== 'play' || player.grapple || player.airJump <= 0) return false;
-  player.airJump = 0;
+  if (state !== 'play' || player.grapple || player.airCool > 0) return false;
+  player.airCool = AIR_JUMP_COOL;
   player.vy = AIR_JUMP;
   player.flip = FLIP_TIME;
+  // Le sens du tour est figé au décollage : s'il se retourne en plein vol, le
+  // salto ne repart pas à l'envers au milieu.
+  player.flipFace = player.face;
   player.squash = 0;
   rings.push({ x: player.x, y: player.y + player.h / 2 - 2, age: 0 });
-  burst(player.x, player.y + player.h / 2, 8,
+  burst(player.x, player.y + player.h / 2, 10,
     ['rgba(255,255,255,.85)', '#ffb27a', '#ffd166'], 2.6);
+  // l'appui part vers l'avant, le corps vers l'arrière : quelques éclats
+  // projetés dans le sens du regard appuient la poussée
+  burst(player.x + player.face * 8, player.y + player.h / 2 - 4, 5,
+    ['#ffd166', '#fff0c2'], 3.4);
   sfx.flip();
   return true;
 }
@@ -1231,6 +1295,7 @@ function drawRings() {
   }
   ctx.globalAlpha = 1;
 }
+
 
 function win() {
   if (state === 'win') return;
@@ -1517,24 +1582,29 @@ function drawBonusIcon(kind, bob) {
     ctx.beginPath();
     ctx.arc(0, 0, 13, b.bob, b.bob + Math.PI * 1.5);
     ctx.stroke();
-  } else if (b.kind === 'clipper') {
-    // razor clipper: chromed body, lever across the top, jaw at the bottom
-    ctx.rotate(Math.sin(b.bob * 0.5) * 0.25);
-    const metal = ctx.createLinearGradient(-6, 0, 6, 0);
-    metal.addColorStop(0, '#9fb3cc');
-    metal.addColorStop(0.45, '#ffffff');
-    metal.addColorStop(1, '#8fa3bd');
-    ctx.fillStyle = metal;
-    roundRect(-5, -9, 10, 18, 4);
+  } else if (b.kind === 'steel') {
+    // l'haltère : deux disques de fonte, une barre chromée, et ça pèse — elle
+    // se balance lourdement au lieu de flotter comme le reste.
+    ctx.rotate(Math.sin(b.bob * 0.4) * 0.16);
+    const bar = ctx.createLinearGradient(0, -3, 0, 3);
+    bar.addColorStop(0, '#eef3f8');
+    bar.addColorStop(0.5, '#aab6c4');
+    bar.addColorStop(1, '#6f7985');
+    ctx.fillStyle = bar;
+    roundRect(-11, -2, 22, 4, 2);
     ctx.fill();
-    ctx.fillStyle = '#dfe8f5';
-    roundRect(-8, -12, 16, 4, 2);
-    ctx.fill();
-    ctx.fillStyle = '#8fa3bd';
-    ctx.beginPath();
-    ctx.moveTo(-5, 7); ctx.lineTo(0, 12); ctx.lineTo(5, 7);
-    ctx.closePath();
-    ctx.fill();
+    for (const side of [-1, 1]) {
+      const disc = ctx.createLinearGradient(side * 9 - 4, 0, side * 9 + 4, 0);
+      disc.addColorStop(0, '#6f7985');
+      disc.addColorStop(0.45, '#dfe8f5');
+      disc.addColorStop(1, '#8b96a3');
+      ctx.fillStyle = disc;
+      roundRect(side * 9 - 3.5, -8, 7, 16, 3);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(45,52,60,.55)';
+      roundRect(side * 9 - 1.2, -5.5, 2.4, 11, 1.2);
+      ctx.fill();
+    }
   } else if (b.kind === 'creme') {
     // pot de crème pour le crâne, couvercle doré et éclat
     ctx.rotate(Math.sin(b.bob * 0.4) * 0.1);
@@ -1820,18 +1890,6 @@ function drawNoodle() {
   ctx.fill();
 }
 
-/* Shield ring while the clipper is live; it blinks out over the last second. */
-function drawShield() {
-  if (player.clipper <= 0) return;
-  if (player.clipper < 60 && Math.floor(frames / 4) % 2 === 0) return;
-  const pulse = 0.34 + Math.sin(frames * 0.16) * 0.12;
-  ctx.strokeStyle = `rgba(139, 215, 255, ${pulse})`;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(player.x, player.y - camY - 4, 27, 0, Math.PI * 2);
-  ctx.stroke();
-}
-
 function drawToasts() {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -1851,6 +1909,82 @@ function drawToasts() {
   ctx.globalAlpha = 1;
 }
 
+/* ------------------------------------------------------------------ le salto
+
+   Trois choses le font lire comme un vrai salto arrière et non comme un sprite
+   qu'on fait tourner : le rythme (lent au décollage, rapide en boule, posé à la
+   réception), le groupé (il se met en boule puis se déplie), et une rotation
+   dont l'axe n'est pas tout à fait perpendiculaire à l'écran — il se raccourcit
+   en passant à l'horizontale, exactement comme un corps qui tourne dans
+   l'épaisseur de l'image. */
+
+/* La phase du tour, de 0 au décollage à 1 à la réception. */
+function flipPhase() {
+  return 1 - player.flip / FLIP_TIME;
+}
+
+/* L'angle parcouru. p - k·sin(2πp)/2π : la dérivée vaut 1 - k·cos(2πp), soit un
+   tiers de la vitesse au départ et au bout, le double au milieu — et le tour
+   tombe pile sur 2π en p = 1. */
+function flipSpin(p) {
+  return (p - (Math.sin(p * Math.PI * 2) * 0.66) / (Math.PI * 2)) * Math.PI * 2;
+}
+
+/* Le groupé. Il s'étire d'abord — les 10 % du décollage, jambes tendues —, se
+   met en boule pour le tour, puis se déplie à 88 % pour se recevoir debout. */
+function flipTuck(p) {
+  return Math.sin(clamp((p - 0.1) / 0.78, 0, 1) * Math.PI) ** 0.75;
+}
+
+/* La rotation vue en volume. On fait tourner le personnage autour d'un axe
+   incliné de FLIP_TILT vers la caméra plutôt que du Z pur : la matrice qui en
+   sort (Rodrigues, projeté en orthographique) est presque une rotation, mais
+   écrase la largeur quand il est tête en bas — c'est ce raccourci qui donne la
+   profondeur. À FLIP_TILT = 0, on retombe exactement sur ctx.rotate. */
+function flipMatrix(a) {
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const st = Math.sin(FLIP_TILT);
+  const ct = Math.cos(FLIP_TILT);
+  ctx.transform(c + st * st * (1 - c), ct * s, -ct * s, c, 0, 0);
+}
+
+/* Le sillage : l'arc que décrivent ses pieds, qui s'efface derrière lui. C'est
+   ce qui rend le tour lisible même à pleine vitesse. */
+function drawFlipSwoosh(cy, p) {
+  const spin = flipSpin(p);
+  const sgn = -player.flipFace;          // le sens du tour, en angles canvas
+  const tail = Math.min(spin, Math.PI * 1.2);
+  const fade = 1 - clamp((p - 0.82) / 0.18, 0, 1);   // il rentre avant l'appui
+  if (tail < 0.05 || fade <= 0) return;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  const STEPS = 12;
+  for (const [radius, width, tint] of [[24, 5.5, '255,209,102'], [16, 3, '255,255,255']]) {
+    for (let i = 0; i < STEPS; i++) {
+      const k = 1 - i / STEPS;
+      const a0 = spin - (tail * (i + 1)) / STEPS;
+      const a1 = spin - (tail * i) / STEPS;
+      ctx.globalAlpha = k * k * 0.42 * fade;
+      ctx.strokeStyle = `rgb(${tint})`;
+      ctx.lineWidth = width * k + 0.4;
+      ctx.beginPath();
+      ctx.arc(player.x, cy + 5, radius, Math.PI / 2 + sgn * a0, Math.PI / 2 + sgn * a1, sgn < 0);
+      ctx.stroke();
+    }
+  }
+  // la pointe du sillage, là où les pieds passent
+  const tip = Math.PI / 2 + sgn * spin;
+  ctx.globalAlpha = 0.75 * fade;
+  ctx.fillStyle = '#fff6d8';
+  ctx.beginPath();
+  ctx.arc(player.x + Math.cos(tip) * 24, cy + 5 + Math.sin(tip) * 24, 2.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
 /* Alexandre: bald, glasses, sweater vest, permanently mid-hop. */
 function drawPlayer() {
   const y = player.y - camY;
@@ -1859,25 +1993,65 @@ function drawPlayer() {
   const sx = 1 + squash * 0.24 - stretch;
   const sy = 1 - squash * 0.24 + stretch;
   const flicker = player.invuln > 0 && Math.floor(frames / 4) % 2 === 0;
+  const spinning = player.flip > 0;
+  const p = spinning ? flipPhase() : 0;
 
+  if (spinning) drawFlipSwoosh(y, p);
+
+  const pose = {
+    rising: player.vy < 0,
+    blink: player.blink < 6,
+    fries: player.fries > 0,
+    trans: player.trans > 0,
+    shine: player.airCool === 0 ? 1 : 0,       // rechargé : les pieds brillent
+    pop: player.airFlash / AIR_FLASH,          // le petit éclat du retour
+    steel: player.steel,
+  };
+
+  // Les rémanences : deux Alexandre de quelques frames en retard, à peine
+  // visibles. Le tour prend du volume, et on voit d'où il vient — mais très
+  // pâles, sinon leur ombre portée fait une tache grise autour de lui.
+  if (spinning) {
+    for (let g = 2; g >= 1; g--) {
+      const gp = p - g * 0.06;
+      if (gp <= 0.02) continue;
+      ctx.globalAlpha = (0.19 - g * 0.06) * (1 - p * 0.5);
+      poseAlexandre(y, flipSpin(gp), flipTuck(gp), sx, sy, pose, true);
+    }
+  }
+
+  ctx.globalAlpha = flicker ? 0.35 : 1;
+  poseAlexandre(y, spinning ? flipSpin(p) : 0, spinning ? flipTuck(p) : 0, sx, sy, pose, false);
+  ctx.globalAlpha = 1;
+}
+
+/* Un Alexandre posé à l'écran, tour et groupé compris. Sorti de drawPlayer pour
+   que les rémanences du salto passent par exactement le même chemin. */
+function poseAlexandre(y, spin, tuck, sx, sy, pose, ghost) {
   ctx.save();
   ctx.translate(player.x, y);
-  ctx.globalAlpha = flicker ? 0.35 : 1;
-  // Le salto : un tour complet en arrière, autour du milieu du corps et non de
-  // l'origine — sinon il pivoterait autour de son nombril et sortirait du cadre.
-  // La rotation passe avant le miroir de `face` et va à contresens de celui-ci :
-  // la tête part en arrière, vers son dos, quel que soit le côté qu'il regarde.
-  if (player.flip > 0) {
-    const spin = (1 - player.flip / FLIP_TIME) * Math.PI * 2;
-    ctx.translate(0, 5);
-    ctx.rotate(-player.face * spin);
-    ctx.translate(0, -5);
+
+  if (spin !== 0) {
+    // Il tourne autour de son centre de masse, qui remonte vers les hanches à
+    // mesure qu'il se met en boule ; et il se décale vers son dos, comme un
+    // salto qui recule un peu. Le tour passe avant le miroir de `face` et va à
+    // contresens de celui-ci : la tête part toujours en arrière.
+    const pivot = 5 + tuck * 3;
+    ctx.translate(-player.flipFace * tuck * 4, -tuck * 3);
+    ctx.translate(0, pivot);
+    // il passe devant la caméra sur la première moitié du tour, derrière sur
+    // la seconde : ce léger va-et-vient d'échelle achève le relief. Et il se
+    // ramasse en boule, ce que les membres seuls ne disent pas assez.
+    const ball = (1 + Math.sin(spin) * 0.09) * (1 - tuck * 0.07);
+    ctx.scale(ball, ball);
+    flipMatrix(-player.flipFace * spin);
+    ctx.translate(0, -pivot);
   }
   ctx.scale(player.face * sx, sy);
 
   // curry propulsion: a plume at his feet, since the particle trail is left far
   // behind once he's climbing at full thrust
-  if (player.jet > 0) {
+  if (player.jet > 0 && !ghost) {
     for (let i = 0; i < 3; i++) {
       const t = frames * 0.35 + i * 2.1;
       ctx.fillStyle = `rgba(154,181,58,${0.45 - i * 0.12})`;
@@ -1887,15 +2061,9 @@ function drawPlayer() {
     }
   }
 
-  drawAlexandre(skin, {
-    rising: player.vy < 0,
-    blink: player.blink < 6,
-    fries: player.fries > 0,
-    trans: player.trans > 0,
-  });
-
+  // Les rémanences du salto ne scintillent pas : une seule paire de pieds propres.
+  drawAlexandre(skin, { ...pose, tuck, shine: ghost ? 0 : pose.shine });
   ctx.restore();
-  ctx.globalAlpha = 1;
 }
 
 /* Alexandre lui-même, dessiné à l'origine courante. `pose` le découple de
@@ -1903,8 +2071,30 @@ function drawPlayer() {
    vrai personnage sans avoir à simuler un saut. */
 function drawAlexandre(skinId, pose = {}) {
   const s = SKIN[skinId] || SKIN[FREE_SKIN];
-  const { rising = false, blink = false, fries = false, trans = false } = pose;
+  const {
+    rising = false, blink = false, fries = false, trans = false, tuck = 0,
+    shine = 0,   // 1 quand le salto est rechargé : les pieds scintillent
+    pop = 0,     // 1 à l'instant où la recharge vient de tomber, puis retombe
+    steel = 0,   // plaques d'acier restantes : 0 = habillé comme d'habitude
+  } = pose;
   const kick = rising ? 4 : 9;
+
+  // Le groupé du salto. `tuck` va de 0 (jambes tendues, comme partout ailleurs)
+  // à 1 (genoux sur la poitrine, pieds repliés sous les fesses) ; à 0 pile, la
+  // géométrie retombe sur les jambes droites d'origine — le genou n'est alors
+  // que le milieu de la cuisse.
+  const legs = [-1, 1].map((side) => {
+    const hip = side < 0 ? [-5, 14] : [5, 14];
+    const straight = side < 0 ? [-7, 14 + kick] : [8, 12 + kick];
+    const kneeUp = side < 0 ? [3, 3] : [9, 5];
+    const footUp = side < 0 ? [-3, 11] : [2, 13];
+    const knee = [
+      lerp((hip[0] + straight[0]) / 2, kneeUp[0], tuck),
+      lerp((hip[1] + straight[1]) / 2, kneeUp[1], tuck),
+    ];
+    const foot = [lerp(straight[0], footUp[0], tuck), lerp(straight[1], footUp[1], tuck)];
+    return { hip, knee, foot };
+  });
 
   if (s.wings) drawWings(rising);
   if (s.hood) drawHood(s);      // rabattue derrière la nuque : avant tout le reste
@@ -1914,27 +2104,40 @@ function drawAlexandre(skinId, pose = {}) {
   roundRect(-12, -4, 24, 24, 8);
   ctx.fill();
 
-  // legs — plus épaisses quand c'est un pantalon, pour qu'on en voie la couleur
-  ctx.strokeStyle = s.trousers;
-  ctx.lineWidth = s.bare ? 4 : 4.8;
+  // legs — plus épaisses quand c'est un pantalon, pour qu'on en voie la couleur.
+  // Sous l'acier il n'y a plus de pantalon : les cuisses sont en métal, épaisses.
+  ctx.strokeStyle = steel > 0 ? steelTone(steel, 'mid') : s.trousers;
+  ctx.lineWidth = steel > 0 ? 6 : (s.bare ? 4 : 4.8);
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(-5, 14);
-  ctx.lineTo(-7, 14 + kick);
-  ctx.moveTo(5, 14);
-  ctx.lineTo(8, 14 + kick - 2);
+  for (const { hip, knee, foot } of legs) {
+    ctx.moveTo(hip[0], hip[1]);
+    ctx.lineTo(knee[0], knee[1]);
+    ctx.lineTo(foot[0], foot[1]);
+  }
   ctx.stroke();
+  // la chaussure reste en travers du tibia : jambe tendue, elle est à plat
+  // exactement comme avant ; repliée, elle bascule avec la pointe du pied.
   ctx.strokeStyle = s.shoes;
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(-9, 14 + kick);
-  ctx.lineTo(-5, 14 + kick);
-  ctx.moveTo(6, 12 + kick);
-  ctx.lineTo(10, 12 + kick);
+  for (const { knee, foot } of legs) {
+    const dx = foot[0] - knee[0];
+    const dy = foot[1] - knee[1];
+    const len = Math.hypot(dx, dy) || 1;
+    const px = lerp(2, (-dy / len) * 2, tuck);
+    const py = lerp(0, (dx / len) * 2, tuck);
+    ctx.moveTo(foot[0] - px, foot[1] - py);
+    ctx.lineTo(foot[0] + px, foot[1] + py);
+  }
   ctx.stroke();
 
-  // torse : habillé, ou nu avec la tenue posée par-dessus
-  if (s.bare) {
+  // torse : en acier, habillé, ou nu avec la tenue posée par-dessus. L'acier
+  // remplace le haut et tous ses accessoires — c'est bien le principe : les
+  // habits ont craqué sous les muscles.
+  if (steel > 0) {
+    drawSteelTorso(steel);
+  } else if (s.bare) {
     ctx.fillStyle = '#f0c49b';
     roundRect(-10, -3, 20, 20, 7);
     ctx.fill();
@@ -1979,22 +2182,41 @@ function drawAlexandre(skinId, pose = {}) {
     if (s.scarf) drawScarf(s);
   }
 
-  // arms — up when rising, out when falling
-  ctx.strokeStyle = '#f0c49b';
-  ctx.lineWidth = 3.5;
+  // arms — up when rising, out when falling, et refermés sur les genoux dans le
+  // salto : le coude sort du bras tendu et la main va chercher la rotule.
+  ctx.strokeStyle = steel > 0 ? steelTone(steel, 'mid') : '#f0c49b';
+  ctx.lineWidth = steel > 0 ? 5.4 : 3.5;
   ctx.beginPath();
-  if (rising) {
-    ctx.moveTo(-9, 2); ctx.lineTo(-14, -7);
-    ctx.moveTo(9, 2); ctx.lineTo(14, -7);
-  } else {
-    ctx.moveTo(-9, 2); ctx.lineTo(-15, 6);
-    ctx.moveTo(9, 2); ctx.lineTo(15, 6);
+  const hands = rising ? [[-14, -7], [14, -7]] : [[-15, 6], [15, 6]];
+  for (let i = 0; i < 2; i++) {
+    const sh = i === 0 ? [-9, 2] : [9, 2];
+    const out = hands[i];
+    const elbow = [lerp(out[0], i === 0 ? -6 : 2, tuck), lerp(out[1], 9, tuck)];
+    const hand = [lerp(out[0], legs[i].knee[0] - 1, tuck), lerp(out[1], legs[i].knee[1] + 1, tuck)];
+    ctx.moveTo(sh[0], sh[1]);
+    ctx.lineTo(elbow[0], elbow[1]);
+    if (tuck > 0.02) ctx.lineTo(hand[0], hand[1]);
   }
   ctx.stroke();
 
+  // les biceps d'acier : une boule sur chaque épaule, plus grosse que la manche
+  // qu'elle a fait craquer. Un reflet dessus, sinon ça ne brille pas.
+  if (steel > 0) {
+    for (const dir of [-1, 1]) {
+      ctx.fillStyle = steelTone(steel, 'mid');
+      ctx.beginPath();
+      ctx.ellipse(dir * 10, 1.5, 5, 5.6, dir * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = steel === STEEL_HITS ? 'rgba(255,255,255,.4)' : 'rgba(255,255,255,.2)';
+      ctx.beginPath();
+      ctx.ellipse(dir * 11, -0.6, 2, 2.6, dir * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   // manches courtes, posées par-dessus l'épaule pour que le haut se lise. Une
   // veste par-dessus une chemise a ses propres manches : d'où sleeveColor.
-  if (s.sleeves) {
+  if (s.sleeves && steel === 0) {
     ctx.fillStyle = s.sleeveColor || s.shirt;
     const at = (s.bodyW || 20) / 2 - 0.4;
     for (const dir of [-1, 1]) {
@@ -2097,6 +2319,130 @@ function drawAlexandre(skinId, pose = {}) {
   ctx.beginPath();
   ctx.arc(0, -6.5, 3.2, 0.25 * Math.PI, 0.75 * Math.PI);
   ctx.stroke();
+
+  // Le salto rechargé : ses pieds scintillent de propreté, et ça respire — le
+  // scintillement enfle puis retombe au lieu de clignoter à intensité fixe.
+  // L'enveloppe est la somme de deux sinusoïdes de périodes incommensurables :
+  // les creux et les pics ne reviennent jamais au même rythme, donc ça brille
+  // « plus ou moins » sans jamais avoir l'air d'une boucle. Dessiné en dernier
+  // pour qu'aucune jambe ne le cache ; `pop` gonfle tout à l'instant du retour.
+  if (shine > 0) {
+    const swell = (Math.sin(frames * 0.045) + Math.sin(frames * 0.017)) / 2;   // -1 → 1
+    const env = 0.42 + (swell + 1) / 2 * 0.58 + pop * 0.5;   // jamais éteint, jamais plat
+    ctx.lineCap = 'round';
+
+    for (const { foot } of legs) {
+      // un halo sous la chaussure : c'est lui qui rend le scintillement visible
+      // en petit, les étoiles seules se perdent sur un fond clair.
+      const halo = ctx.createRadialGradient(foot[0], foot[1], 0, foot[0], foot[1], 9 + env * 4);
+      halo.addColorStop(0, `rgba(255,255,255,${(0.3 * env).toFixed(3)})`);
+      halo.addColorStop(0.55, `rgba(206,240,255,${(0.14 * env).toFixed(3)})`);
+      halo.addColorStop(1, 'rgba(206,240,255,0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(foot[0], foot[1], 9 + env * 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // trois étincelles par chaussure, chacune sur son propre cycle : elles ne
+      // s'allument pas ensemble, et la plus grosse tourne d'une étoile à l'autre.
+      for (let i = 0; i < 3; i++) {
+        const seed = foot[0] * 0.7 + i * 2.1;
+        const beat = Math.sin(frames * 0.13 + seed);
+        if (beat <= 0) continue;                   // éteinte la moitié de son cycle
+        const spot = SPARKLES[i];
+        const sx = foot[0] + spot[0];
+        const sy = foot[1] + spot[1];
+        const r = (2.4 + beat * 3.1) * spot[2] * (0.72 + env * 0.5) * (1 + pop);
+        const alpha = clamp(beat * (0.62 + env * 0.38) + pop * 0.3, 0, 1);
+        ctx.strokeStyle = `rgba(${i === 1 ? '214,244,255' : '255,255,255'},${alpha.toFixed(3)})`;
+        ctx.lineWidth = 1.15 + env * 0.5 + pop * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(sx - r, sy);   ctx.lineTo(sx + r, sy);
+        ctx.moveTo(sx, sy - r);   ctx.lineTo(sx, sy + r);
+        // deux branches obliques plus courtes : une étoile, pas une croix
+        const d = r * 0.4;
+        ctx.moveTo(sx - d, sy - d); ctx.lineTo(sx + d, sy + d);
+        ctx.moveTo(sx + d, sy - d); ctx.lineTo(sx - d, sy + d);
+        ctx.stroke();
+        // un cœur blanc sur les plus grosses : elles piquent au lieu de baver
+        if (r > 3.4) {
+          ctx.fillStyle = `rgba(255,255,255,${(alpha * 0.9).toFixed(3)})`;
+          ctx.beginPath();
+          ctx.arc(sx, sy, r * 0.18, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+}
+
+/* Où se posent les étincelles autour d'une chaussure, et leur taille relative :
+   une grosse au-dessus du pied, deux plus petites de part et d'autre. */
+const SPARKLES = [[-3.6, -3.8, 1], [3.8, 1.4, 0.72], [0.4, -6.2, 0.58]];
+
+/* ------------------------------------------------------ le corps d'acier, vu
+
+   Deux états seulement : l'acier neuf, clair et brillant, et l'acier entamé —
+   terne, fendu, avec la peau qui ressort par les trous. `steelTone` sert aussi
+   aux membres, pour que bras, cuisses et torse restent du même métal. */
+
+const STEEL_NEW = { lit: '#eef3f8', mid: '#aab6c4', dark: '#7d8794' };
+const STEEL_WORN = { lit: '#cfd6dd', mid: '#8f99a5', dark: '#5d666f' };
+
+function steelTone(steel, key) {
+  return (steel === STEEL_HITS ? STEEL_NEW : STEEL_WORN)[key];
+}
+
+function drawSteelTorso(steel) {
+  const worn = steel < STEEL_HITS;
+  const grad = ctx.createLinearGradient(-11, -3, 11, 17);
+  grad.addColorStop(0, steelTone(steel, 'lit'));
+  grad.addColorStop(0.5, steelTone(steel, 'mid'));
+  grad.addColorStop(1, steelTone(steel, 'dark'));
+  ctx.fillStyle = grad;
+  roundRect(-11, -3, 22, 20, 7);   // plus large que le torse habillé : il a gonflé
+  ctx.fill();
+
+  // pectoraux
+  ctx.fillStyle = worn ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.32)';
+  ctx.beginPath();
+  ctx.ellipse(-5, 1.5, 4.6, 3.4, 0.16, 0, Math.PI * 2);
+  ctx.ellipse(5, 1.5, 4.6, 3.4, -0.16, 0, Math.PI * 2);
+  ctx.fill();
+
+  // abdos : une rainure centrale et trois travées
+  ctx.strokeStyle = 'rgba(40,48,56,.45)';
+  ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(0, 6);
+  ctx.lineTo(0, 14.5);
+  for (let i = 0; i < 3; i++) {
+    const gy = 7.5 + i * 3;
+    ctx.moveTo(-5.5, gy);
+    ctx.lineTo(5.5, gy);
+  }
+  ctx.stroke();
+
+  // la ceinture d'acier aux hanches, à la place du pantalon parti en lambeaux
+  ctx.fillStyle = worn ? '#4f5862' : '#6f7985';
+  roundRect(-10.5, 13.4, 21, 4.2, 1.6);
+  ctx.fill();
+
+  if (worn) {
+    // les plaques arrachées par le premier rasoir : la peau ressort par les
+    // trous, et deux fentes courent sur ce qui tient encore.
+    ctx.fillStyle = '#f0c49b';
+    roundRect(3.4, 4.4, 6.2, 5.2, 2);
+    ctx.fill();
+    roundRect(-9, 8.4, 4.6, 4.2, 1.6);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(28,34,42,.55)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-9.5, -1); ctx.lineTo(-4.6, 3.4); ctx.lineTo(-6.6, 7);
+    ctx.moveTo(8.6, 10.4); ctx.lineTo(4.2, 13);
+    ctx.stroke();
+  }
 }
 
 /* Le caleçon, ou le slip de bain : la même ceinture, mais une jambe courte pour
@@ -2274,17 +2620,17 @@ function drawScarf(s) {
   ctx.fill();
 }
 
-/* Une coupe de cheveux : la calotte suit le crâne, la mèche retombe en biais sur
-   le front et deux pattes descendent devant les oreilles. `sweep` renvoie la
-   mèche en arrière plutôt que sur le front. */
+/* Une coupe de cheveux, et deux pattes devant les oreilles. Par défaut c'est un
+   rideau : raie au milieu, et deux pans qui retombent de part et d'autre en
+   laissant voir un coin de front. `sweep` les ramène en arrière à la place. */
 function drawHair(s) {
   ctx.fillStyle = s.hair;
-  ctx.beginPath();                              // la calotte, posée sur le crâne
-  ctx.arc(0, -12, 11.4, Math.PI * 1.02, Math.PI * 1.98);
-  ctx.closePath();
-  ctx.fill();
 
   if (s.sweep) {
+    ctx.beginPath();                            // la calotte, posée sur le crâne
+    ctx.arc(0, -12, 11.4, Math.PI * 1.02, Math.PI * 1.98);
+    ctx.closePath();
+    ctx.fill();
     // Ramenés en arrière, avec du volume au-dessus du front.
     ctx.beginPath();
     ctx.moveTo(-10.6, -15.4);
@@ -2294,19 +2640,18 @@ function drawHair(s) {
     ctx.closePath();
     ctx.fill();
   } else {
-    // La mèche : elle part de la tempe gauche et balaie le front vers la droite.
+    // Le rideau, d'un seul tracé : le bord extérieur suit le crâne d'une tempe à
+    // l'autre, et la lisière ondule au retour — une mèche pend de chaque côté du
+    // front, et remonte au milieu là où la raie sépare les deux pans.
     ctx.beginPath();
-    ctx.moveTo(-11.2, -14.6);
-    ctx.quadraticCurveTo(-9.4, -22.6, -1.4, -22.4);
-    ctx.quadraticCurveTo(7.4, -22, 10.8, -13.6);
-    ctx.quadraticCurveTo(6.4, -16.8, 1.4, -15.8);
-    ctx.quadraticCurveTo(-4.6, -14.4, -8.2, -13.2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();                            // la pointe qui retombe en biais
-    ctx.moveTo(6.6, -16.4);
-    ctx.quadraticCurveTo(11.2, -15.2, 10.2, -10.8);
-    ctx.quadraticCurveTo(8.6, -13.4, 5.4, -14);
+    ctx.arc(0, -12.4, 12, Math.PI * 1.04, Math.PI * 1.96);
+    ctx.quadraticCurveTo(9.6, -10.4, 7.2, -12.2);       // la tempe droite
+    ctx.quadraticCurveTo(5.8, -10.2, 4.2, -11.8);       // la mèche qui pend au front
+    ctx.quadraticCurveTo(2.8, -15.6, 2.2, -19.8);       // le bord intérieur du pan
+    ctx.quadraticCurveTo(0, -21.6, -2.2, -19.8);        // la raie, qui coiffe le crâne
+    ctx.quadraticCurveTo(-2.8, -15.6, -4.2, -11.8);     // l'autre pan, en miroir
+    ctx.quadraticCurveTo(-5.8, -10.2, -7.2, -12.2);
+    ctx.quadraticCurveTo(-9.6, -10.4, -11.9, -13.9);
     ctx.closePath();
     ctx.fill();
   }
@@ -2316,6 +2661,7 @@ function drawHair(s) {
     ctx.ellipse(dir * 10.2, -13.4, 1.9, 3.4, dir * 0.2, 0, Math.PI * 2);
     ctx.fill();
   }
+
 }
 
 /* Le bonnet, tiré jusqu'au-dessus des lunettes — le crâne luisant disparaît. */
@@ -2610,8 +2956,12 @@ function drawHud() {
   ctx.font = 'bold 14px ui-rounded, system-ui, sans-serif';
   ctx.fillText(`×${Math.max(0, lives)}`, 116, 21);
 
-  // le salto en réserve : deux chevrons, éteints une fois consommés
-  ctx.strokeStyle = player.airJump > 0 ? '#8bffc8' : 'rgba(139,255,200,.22)';
+  // le salto : deux chevrons allumés quand il est dispo, éteints le temps de la
+  // recharge, et une barrette qui se remplit pour dire dans combien de temps.
+  const ready = player.airCool === 0;
+  ctx.strokeStyle = player.airFlash > 0 && Math.floor(frames / 3) % 2 === 0
+    ? '#fdf6ef'
+    : (ready ? '#8bffc8' : 'rgba(139,255,200,.22)');
   ctx.lineWidth = 2;
   ctx.lineCap = 'round';
   for (let i = 0; i < 2; i++) {
@@ -2622,15 +2972,46 @@ function drawHud() {
     ctx.lineTo(156, cy);
     ctx.stroke();
   }
+  if (!ready) {
+    ctx.fillStyle = player.trans > 0 ? 'rgba(63,45,16,.2)' : 'rgba(255,255,255,.16)';
+    roundRect(145, 30, 12, 3, 1.5);
+    ctx.fill();
+    ctx.fillStyle = '#8bffc8';
+    roundRect(145, 30, 12 * (1 - player.airCool / AIR_JUMP_COOL), 3, 1.5);
+    ctx.fill();
+  }
 
-  // une jauge par pouvoir en cours, puis les nouilles restantes
+  // Une ligne par pouvoir en cours, puis les nouilles restantes. Le corps
+  // d'acier prend une ligne comme les autres, mais sans chrono : ce sont des
+  // pastilles, une par contact encore encaissable.
   const bars = [];
-  if (player.clipper > 0) bars.push(['#8bd7ff', player.clipper / CLIPPER_TIME]);
+  if (player.steel > 0) bars.push(['plates', player.steel / STEEL_HITS]);
   if (player.jet > 0) bars.push(['#9ab53a', player.jet / JET_TIME]);
   if (player.fries > 0) bars.push(['#ffd93b', player.fries / FRIES_TIME]);
   if (player.trans > 0) bars.push(['#fff6cd', player.trans / TRANS_TIME]);
   bars.forEach(([color, frac], i) => {
     const by = 40 + i * 10;
+    if (color === 'plates') {
+      for (let n = 0; n < STEEL_HITS; n++) {
+        const cx = 18 + n * 11;
+        ctx.beginPath();
+        ctx.arc(cx, by + 3, 4, 0, Math.PI * 2);
+        if (n < player.steel) {
+          const plate = ctx.createLinearGradient(cx - 4, by - 1, cx + 4, by + 7);
+          plate.addColorStop(0, STEEL_NEW.lit);
+          plate.addColorStop(0.55, STEEL_NEW.mid);
+          plate.addColorStop(1, STEEL_NEW.dark);
+          ctx.fillStyle = plate;
+          ctx.fill();
+        } else {
+          // la plaque perdue reste en creux : on voit ce qu'il lui restait
+          ctx.strokeStyle = player.trans > 0 ? 'rgba(63,45,16,.35)' : 'rgba(207,216,227,.32)';
+          ctx.lineWidth = 1.4;
+          ctx.stroke();
+        }
+      }
+      return;
+    }
     ctx.fillStyle = player.trans > 0 ? 'rgba(63,45,16,.2)' : 'rgba(255,255,255,.16)';
     roundRect(14, by, 76, 6, 3);
     ctx.fill();
@@ -3182,7 +3563,6 @@ function draw() {
   if (state !== 'dead' && state !== 'downed') {
     if (state !== 'cat') drawNoodle();
     drawPlayer();
-    if (state !== 'cat') drawShield();
   }
   if (player.trans > 0) drawCracks();
   drawToasts();
@@ -3209,12 +3589,12 @@ function draw() {
       'Grimpe 500 m. Évite les rasoirs volants.',
       ...(tight ? [] : [
         ['Ils coûtent 1 Red Bull sur 3 — et tu as 3 vies.', 'dim'],
-        ['Ramasse les canettes, les coupe-ongles, les codes Uber Eats.', 'dim'],
+        ['Ramasse les canettes, les haltères, les codes Uber Eats.', 'dim'],
         '',
       ]),
       ...(VIEW.h < 480 ? [] : [
         ['← → ou A / D pour te diriger · il rebondit tout seul', 'dim'],
-        ['espace, ↑ ou un double tap : un salto arrière, un par rebond', 'dim'],
+        ['espace, ↑ ou un double tap : un salto arrière, un toutes les 5 s', 'dim'],
       ]),
     ];
     panel(lines, { align: 'top' });
@@ -3429,7 +3809,7 @@ window.addEventListener('keydown', (event) => {
   if (event.code === 'KeyR') { start(); return; }
   // T comme tenue : le hall des skins, depuis n'importe où.
   if (event.code === 'KeyT') { toTitle(); return; }
-  // Espace, ↑ ou W : le salto. En l'air seulement, et une seule fois par rebond.
+  // Espace, ↑ ou W : le salto, s'il est rechargé.
   if (['Space', 'ArrowUp', 'KeyW'].includes(event.code)) {
     if (state === 'play') { airJump(); return; }
   }
